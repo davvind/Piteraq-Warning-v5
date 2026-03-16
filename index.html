@@ -1,1 +1,600 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Piteraq Monitor</title>
+  <style>
+    :root {
+      --bg: #071224;
+      --panel: #17263f;
+      --panel-2: #1d2d49;
+      --text: #f3f7ff;
+      --muted: #b9c5d9;
+      --green: #25d366;
+      --yellow: #f1c232;
+      --orange: #ff9f43;
+      --red: #ff6b6b;
+      --blue: #4b8cff;
+      --chip-text: #06111e;
+      --border: rgba(255,255,255,0.06);
+      --shadow: 0 10px 28px rgba(0,0,0,0.22);
+      --radius: 20px;
+    }
 
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(180deg, #06101f 0%, #071a33 100%);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    body { min-height: 100vh; }
+
+    .app {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: 12px 12px 28px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2.3rem, 7vw, 4rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.35;
+      display: grid;
+      gap: 2px;
+    }
+
+    .risk-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .risk-main {
+      font-size: clamp(2.2rem, 8vw, 3.5rem);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 92px;
+      min-height: 56px;
+      border-radius: 18px;
+      padding: 4px 16px;
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: var(--chip-text);
+    }
+
+    .chip.GRN { background: var(--green); }
+    .chip.YEL { background: var(--yellow); }
+    .chip.ORG { background: var(--orange); }
+    .chip.RED { background: var(--red); }
+
+    .phase {
+      margin-top: 10px;
+      font-size: 1rem;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .watch {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      font-weight: 700;
+    }
+
+    .msg-box {
+      margin-top: 12px;
+      background: #08111f;
+      border-radius: 18px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.96rem;
+      line-height: 1.18;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 12px;
+      font-size: 1rem;
+      font-weight: 800;
+      color: white;
+      cursor: pointer;
+      width: 100%;
+      min-height: 54px;
+    }
+
+    .btn.primary { background: #18b64b; }
+    .btn.secondary { background: var(--blue); }
+    .btn.ghost { background: rgba(255,255,255,0.08); }
+    .btn:disabled {
+      opacity: 0.75;
+      cursor: default;
+    }
+
+    .status {
+      margin-top: 12px;
+      display: grid;
+      gap: 6px;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .ok { color: #79f3a6; }
+    .warn { color: var(--yellow); }
+    .err { color: #ff9c9c; }
+    .muted { color: var(--muted); }
+
+    .stamp {
+      margin-top: 10px;
+      background: rgba(0,0,0,0.18);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      font-weight: 800;
+    }
+
+    .compact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 560px) {
+      .btn-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (min-width: 700px) {
+      .compact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    .metric {
+      background: var(--panel-2);
+      border-radius: 16px;
+      padding: 12px 12px 11px;
+      min-width: 0;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.2;
+      margin-bottom: 7px;
+    }
+
+    .metric .value {
+      font-size: 1.9rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin-bottom: 5px;
+    }
+
+    .metric .desc {
+      font-size: 0.9rem;
+      line-height: 1.28;
+      color: #dde5f2;
+    }
+
+    .metric .tiny {
+      margin-top: 4px;
+      font-size: 0.8rem;
+      line-height: 1.24;
+      color: var(--muted);
+    }
+
+    details {
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 15px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    summary::-webkit-details-marker { display: none; }
+
+    .summary-sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .details-body { padding: 0 10px 10px; }
+
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      font-size: 0.82rem;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="card hero">
+      <h1>Piteraq Monitor</h1>
+      <div class="sub">
+        <div id="hero-location">TASIILAQ</div>
+        <div id="hero-updated">Oppdatert –</div>
+        <div id="hero-model">Modell –</div>
+      </div>
+
+      <div class="risk-row">
+        <div id="risk-main" class="risk-main">—</div>
+        <div id="risk-chip" class="chip GRN">GRN</div>
+      </div>
+      <div id="risk-phase" class="phase">—</div>
+      <div id="risk-watch" class="watch">Watch —</div>
+
+      <div id="msg-box" class="msg-box">Laster …</div>
+
+      <div class="btn-row">
+        <button id="copy-btn" class="btn secondary">Kopier inReach</button>
+        <button id="details-btn" class="btn primary">Vis detaljer</button>
+        <button id="reload-btn" class="btn ghost">Oppdater data</button>
+      </div>
+
+      <div class="status">
+        <div id="trend-status" class="ok">Trendstatus: –</div>
+        <div id="quality-status" class="warn">Datakvalitet: –</div>
+      </div>
+
+      <div id="last-success" class="stamp">Sist vellykket oppdatert: –</div>
+      <div id="trend-refs" class="stamp muted" style="display:none;">Trendreferanser: –</div>
+    </section>
+
+    <section id="details-wrap" style="display:none; gap:12px;">
+      <section class="card">
+        <h2 class="section-title">Kjerneverdier</h2>
+        <div class="compact-grid" id="score-grid"></div>
+      </section>
+
+      <details open>
+        <summary>
+          <div>
+            <div>Nåverdi og triggere</div>
+            <div class="summary-sub">Mest relevante drivere akkurat nå</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="primary-grid"></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <div>
+            <div>Trender og endringer</div>
+            <div class="summary-sub">Retning og tempo</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="trend-grid"></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <div>
+            <div>Diagnostikk</div>
+            <div class="summary-sub">Reservoar, katabatikk og LP-vektor</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="diag-grid"></div>
+        </div>
+      </details>
+
+      <section class="card">
+        <div id="footer-note" class="muted"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+    const fmt1 = (v) => isNum(v) ? Number(v).toFixed(1) : 'mangler data';
+    const fmt0 = (v) => isNum(v) ? String(Math.round(v)) : 'mangler data';
+    const fmt2 = (v) => isNum(v) ? Number(v).toFixed(2) : 'mangler data';
+
+    let summaryData = null;
+    let fullData = null;
+    let detailsVisible = false;
+
+    function descSigned(v, unit='') {
+      if (!isNum(v)) return 'mangler data';
+      const n = Number(v);
+      return `${n > 0 ? '+' : ''}${n.toFixed(1)}${unit}`;
+    }
+
+    function chipClass(level) {
+      return ['GRN','YEL','ORG','RED'].includes(level) ? level : 'GRN';
+    }
+
+    function metricCard({ label, value, desc, tiny='' }) {
+      return `
+        <article class="metric">
+          <div class="label">${label}</div>
+          <div class="value">${value}</div>
+          <div class="desc">${desc}</div>
+          ${tiny ? `<div class="tiny">${tiny}</div>` : ''}
+        </article>
+      `;
+    }
+
+    function extractHorizon(message) {
+      if (!message) return null;
+      const m = String(message).match(/\b(0-6T|6-12T|12-24T)\b/);
+      return m ? m[1] : null;
+    }
+
+    function buildCompactMessage(data) {
+      const level = data?.output?.level || data?.level || 'GRN';
+      const risk = fmt0(data?.scores?.risk ?? data?.risk);
+      const horizon = extractHorizon(data?.output?.message || data?.message) || '12-24T';
+      const res = fmt0(data?.scores?.reservoir ?? data?.reservoir);
+      const trg = fmt0(data?.scores?.trigger ?? data?.trigger);
+      const cpl = fmt0(data?.scores?.coupling ?? data?.coupling);
+      const ice = fmt0(data?.inputs?.icePressure ?? data?.icePressure);
+      const sea = fmt0(data?.inputs?.seaPressure ?? data?.seaPressure);
+      const gr = fmt1(data?.inputs?.gradient ?? data?.gradient);
+      const sf6 = fmt1(data?.inputs?.sf6 ?? data?.sf6);
+      const ag = isNum(data?.derived?.accG ?? data?.accG) ? ` AG${Math.round(data.derived?.accG ?? data.accG)}` : '';
+      const lpb = isNum(data?.derived?.lpBearingFromSea ?? data?.lpBearing) ? ` LPB${Math.round(data.derived?.lpBearingFromSea ?? data.lpBearing)}` : '';
+      const lpv = (data?.derived?.lpvLabel ?? data?.lpv) ? ` ${data?.derived?.lpvLabel ?? data?.lpv}` : '';
+      const lpd = isNum(data?.derived?.lpDistanceToFavoredSector ?? data?.lpDistance) ? ` LPD${Math.round(data.derived?.lpDistanceToFavoredSector ?? data.lpDistance)}` : '';
+      const lpg = isNum(data?.derived?.lpGeometryScore ?? data?.lpGeometryScore) ? ` LPG${Math.round(data.derived?.lpGeometryScore ?? data.lpGeometryScore)}` : '';
+      return `${level}${risk} ${horizon} RES${res} TRG${trg} CPL${cpl}\nICE${ice} SEA${sea} GR${gr} SF6${sf6}${ag}${lpb}${lpv}${lpd}${lpg}`;
+    }
+
+    function setHeader(data) {
+      const meta = data.meta || data;
+      const output = data.output || {};
+      const scores = data.scores || {};
+      const derived = data.derived || {};
+
+      document.getElementById('hero-location').textContent = `${meta.location || 'TASIILAQ'}`;
+      document.getElementById('hero-updated').textContent = `Oppdatert ${meta.updatedAt || '–'}`;
+      document.getElementById('hero-model').textContent = `Modell ${meta.model || '–'}`;
+
+      const level = output.level || data.level || 'GRN';
+      document.getElementById('risk-main').textContent = `${level} · ${fmt0(scores.risk ?? data.risk)}/100`;
+      const chip = document.getElementById('risk-chip');
+      chip.textContent = level;
+      chip.className = `chip ${chipClass(level)}`;
+
+      document.getElementById('risk-phase').textContent = output.phase || data.phase || '–';
+      document.getElementById('risk-watch').textContent = `Watch ${(derived.watch ?? data.watch) ? 'ON' : 'OFF'}`;
+
+      const trendText = derived.trendDataStatus || data.trendDataStatus || '–';
+      const trendEl = document.getElementById('trend-status');
+      trendEl.textContent = `Trendstatus: ${trendText}`;
+      trendEl.className = String(trendText).includes('ok') ? 'ok' : 'warn';
+
+      const qFlags = Array.isArray(derived.qualityFlags) ? derived.qualityFlags : (Array.isArray(data.qualityFlags) ? data.qualityFlags : []);
+      document.getElementById('quality-status').textContent = `Datakvalitet: ${qFlags.length ? qFlags.join(', ') : 'OK'}`;
+      document.getElementById('quality-status').className = qFlags.length ? 'warn' : 'ok';
+
+      document.getElementById('last-success').textContent = `Sist vellykket oppdatert: ${meta.lastSuccessfulUpdate || meta.updatedAt || '–'}`;
+      document.getElementById('msg-box').textContent = buildCompactMessage(data);
+    }
+
+    function renderDetails(data) {
+      const meta = data.meta || {};
+      const scores = data.scores || {};
+      const inputs = data.inputs || {};
+      const derived = data.derived || {};
+
+      document.getElementById('trend-refs').style.display = 'block';
+      const sel = derived.selectedTimes || {};
+      document.getElementById('trend-refs').textContent = `Trendreferanser: now: ${sel.now?.validTime || '–'} · 6t: ${sel.h6_from_history || '–'} · 12t: ${sel.h12_from_history || '–'} · 24t: ${sel.h24_from_history || '–'} · 72t: ${sel.h72_from_history || '–'}`;
+
+      document.getElementById('score-grid').innerHTML = [
+        metricCard({ label: 'Reservoir', value: `${fmt0(scores.reservoir)}/100`, desc: 'oppdemming over is' }),
+        metricCard({ label: 'Trigger', value: `${fmt0(scores.trigger)}/100`, desc: 'gradient + trend + strait-fall + akselerasjon + gate' }),
+        metricCard({ label: 'Coupling', value: `${fmt0(scores.coupling)}/100`, desc: 'sone + LP-geometri + havlav + ventil + kystgate' }),
+        metricCard({ label: 'Potential', value: `${fmt0(scores.potential)}/100`, desc: 'piteraq-nærhet', tiny: isNum(derived.potentialRaw) ? `rått ${fmt0(derived.potentialRaw)} · reservoirfaktor ${fmt1(derived.potentialReservoirFactor)}` : '' }),
+        metricCard({ label: 'Regional sone', value: `${fmt0(derived.cycloneScore)}/100`, desc: derived.cycloneInTriggerZone ? 'innenfor gunstig sone' : 'utenfor gunstig sone', tiny: `sentrum ${derived.seaCentroidSector || derived.sector || '–'}` }),
+        metricCard({ label: 'LP-geometri', value: `${fmt0(derived.lpGeometryScore ?? derived.lpSectorScore)}/100`, desc: `${derived.lpAlignmentLabel || 'unknown'} · ${derived.lpApproachingFavoredSector ? 'på vei inn' : 'ikke inntrend'}`, tiny: `LPD ${fmt0(derived.lpDistanceToFavoredSector)}° · ${derived.lpvLabel || 'LPV?'}` }),
+      ].join('');
+
+      document.getElementById('primary-grid').innerHTML = [
+        metricCard({ label: 'Ice pressure', value: `${fmt1(inputs.icePressure)} hPa`, desc: `vs normal ${descSigned(derived.icePressureAnomNow, ' hPa')}` }),
+        metricCard({ label: 'Sea pressure', value: `${fmt1(inputs.seaPressure)} hPa`, desc: `regional sone ${derived.seaCentroidSector || derived.sector || '–'}` }),
+        metricCard({ label: 'Gradient', value: `${fmt1(inputs.gradient)} hPa`, desc: `d6 ${descSigned(inputs.d6, ' hPa')}` }),
+        metricCard({ label: 'Gradient-acc', value: `${fmt1(derived.accG)}`, desc: 'pluss = gradient øker raskere' }),
+        metricCard({ label: 'Ventilindeks', value: `${fmt1(inputs.ventilIndex)} hPa`, desc: 'synoptisk åpning i Danmarkstredet' }),
+        metricCard({ label: 'Kystgate', value: `${fmt1(inputs.coastGate)} hPa`, desc: 'ice pressure minus kystnært sjøtrykk' }),
+      ].join('');
+
+      document.getElementById('trend-grid').innerHTML = [
+        metricCard({ label: 'd6', value: `${descSigned(inputs.d6)} hPa`, desc: 'gradientendring siste 6 timer' }),
+        metricCard({ label: 'd12', value: `${descSigned(inputs.d12)} hPa`, desc: 'gradientendring siste 12 timer' }),
+        metricCard({ label: 'Strait ΔP 6t', value: `${descSigned(inputs.seaPressureDelta6h)} hPa`, desc: 'rå trykkendring i strait', tiny: 'minus = trykkfall · pluss = trykkstigning' }),
+        metricCard({ label: 'Strait ΔP 12t', value: `${descSigned(inputs.seaPressureDelta12h)} hPa`, desc: 'rå trykkendring i strait', tiny: 'minus = trykkfall · pluss = trykkstigning' }),
+        metricCard({ label: 'SF6', value: `${fmt1(inputs.sf6)} hPa`, desc: 'fallstyrke i strait siste 6 timer' }),
+        metricCard({ label: 'SF12', value: `${fmt1(inputs.sf12)} hPa`, desc: 'fallstyrke i strait siste 12 timer' }),
+        metricCard({ label: 'Fallstyrke-endring', value: `${descSigned(inputs.pressureFallAcceleration)} hPa`, desc: 'pluss = fallet tiltar', tiny: 'minus = fallet svekkes' }),
+        metricCard({ label: 'Ice wind', value: `${fmt1(inputs.iceWind)} m/s`, desc: `trend 6t ${descSigned(inputs.iceWindTrend6h, ' m/s')}` }),
+        metricCard({ label: 'Ventil d6', value: `${descSigned(inputs.ventilD6)} hPa`, desc: 'endring i ventil siste 6 timer' }),
+        metricCard({ label: 'Ventil d12', value: `${descSigned(inputs.ventilD12)} hPa`, desc: 'endring i ventil siste 12 timer' }),
+        metricCard({ label: 'Kystgate d6', value: `${descSigned(inputs.coastGateD6)} hPa`, desc: 'endring i kystgate siste 6 timer' }),
+        metricCard({ label: 'Kystgate d12', value: `${descSigned(inputs.coastGateD12)} hPa`, desc: 'endring i kystgate siste 12 timer' }),
+      ].join('');
+
+      document.getElementById('diag-grid').innerHTML = [
+        metricCard({ label: 'Coast-ice ΔT', value: `${fmt1(inputs.coastIceDeltaT)} °C`, desc: 'temperaturforskjell kyst minus is' }),
+        metricCard({ label: 'Kulde 24t', value: `${descSigned(inputs.iceTempTrend24h)} °C`, desc: 'minus = kaldere is siste 24 timer' }),
+        metricCard({ label: 'Kulde 72t', value: `${descSigned(inputs.iceTempTrend72h)} °C`, desc: 'minus = kaldere is siste 72 timer' }),
+        metricCard({ label: 'LP–SEA bearing', value: `${fmt1(derived.lpBearingFromSea)}°`, desc: 'LPB · SEA → LP', tiny: 'favorittfelt = 300–60°' }),
+        metricCard({ label: 'LP trend', value: `${derived.lpvLabel || 'mangler data'}`, desc: 'LPV · + = inn mot felt, - = bort fra felt', tiny: `rå endring ${descSigned(derived.lpBearingTrend6h, '°/6t')}` }),
+        metricCard({ label: 'LP avstand til felt', value: `${fmt1(derived.lpDistanceToFavoredSector)}°`, desc: 'LPD · avstand til nærmeste kant av 300–60°', tiny: `score ${fmt0(derived.lpDistanceScore)}/100` }),
+        metricCard({ label: 'LP approach speed', value: `${fmt2(derived.lpApproachSpeedDegPerHour)}°/t`, desc: 'pluss = raskere inn mot favorittfelt' }),
+        metricCard({ label: 'LP-sektorscore', value: `${fmt0(derived.lpSectorScore)}/100`, desc: `${derived.lpAlignmentLabel || 'unknown'} · diagnose` }),
+        metricCard({ label: 'LP-geometri', value: `${fmt0(derived.lpGeometryScore)}/100`, desc: 'samlet LPB + LPD + LPV + approach', tiny: `LP-offset ${fmt1(derived.lpOffsetHpa)} hPa · ${fmt1(derived.lpDistanceKm)} km` }),
+      ].join('');
+
+      document.getElementById('footer-note').innerHTML = `
+        <div>${meta.forecastInfo || ''}</div>
+        <div class="pill-row">
+          <span class="pill">instans ${meta.instanceId || '–'}</span>
+          <span class="pill">trend ${derived.trendDataStatus || '–'}</span>
+          <span class="pill">ice ${derived.usedIcePressurePoints ?? '–'}</span>
+          <span class="pill">sea ${derived.usedSeaPressurePoints ?? '–'}</span>
+        </div>
+      `;
+    }
+
+    async function fetchJson(path) {
+      const res = await fetch(`${path}?ts=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+      return res.json();
+    }
+
+    async function loadSummary() {
+      try {
+        summaryData = await fetchJson('summary.json');
+      } catch (_) {
+        summaryData = await fetchJson('data.json');
+      }
+      setHeader(summaryData);
+    }
+
+    async function loadDetails(forceReload = false) {
+      if (!fullData || forceReload) {
+        fullData = await fetchJson('data.json');
+      }
+      setHeader(fullData);
+      renderDetails(fullData);
+      document.getElementById('details-wrap').style.display = 'grid';
+      detailsVisible = true;
+      document.getElementById('details-btn').textContent = 'Skjul detaljer';
+    }
+
+    function hideDetails() {
+      document.getElementById('details-wrap').style.display = 'none';
+      detailsVisible = false;
+      document.getElementById('details-btn').textContent = 'Vis detaljer';
+    }
+
+    async function refreshAll() {
+      const reloadBtn = document.getElementById('reload-btn');
+      const previousText = reloadBtn.textContent;
+      reloadBtn.disabled = true;
+      reloadBtn.textContent = 'Oppdaterer…';
+
+      try {
+        fullData = null;
+        await loadSummary();
+        if (detailsVisible) {
+          await loadDetails(true);
+        }
+      } finally {
+        reloadBtn.disabled = false;
+        reloadBtn.textContent = previousText;
+      }
+    }
+
+    document.getElementById('copy-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('copy-btn');
+      const prev = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(document.getElementById('msg-box').textContent);
+        btn.textContent = 'Kopiert';
+        setTimeout(() => { btn.textContent = prev; }, 1200);
+      } catch (_) {
+        btn.textContent = 'Kopi feilet';
+        setTimeout(() => { btn.textContent = prev; }, 1400);
+      }
+    });
+
+    document.getElementById('details-btn').addEventListener('click', () => {
+      if (detailsVisible) {
+        hideDetails();
+        return;
+      }
+      loadDetails().catch(err => alert(`Kunne ikke laste detaljer: ${err.message}`));
+    });
+
+    document.getElementById('reload-btn').addEventListener('click', () => {
+      refreshAll().catch(err => alert(`Kunne ikke oppdatere data: ${err.message}`));
+    });
+
+    loadSummary().catch(err => {
+      document.getElementById('msg-box').textContent = `Kunne ikke laste summary.json/data.json\n${err.message}`;
+    });
+  </script>
+</body>
+</html>
