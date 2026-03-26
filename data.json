@@ -1,14 +1,14 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-26 06:02 UTC",
+    "updatedAt": "2026-03-26 10:20 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
+    "forecastInfo": "Latest update failed: RuntimeError",
     "instanceId": "2026-03-26T030000Z",
     "lastSuccessfulUpdate": "2026-03-26 06:02 UTC",
-    "lastAttemptFailed": null,
-    "stale": false
+    "lastAttemptFailed": "RuntimeError",
+    "stale": true
   },
   "inputs": {
     "icePressure": 1014.3,
@@ -104,12 +104,13 @@
     "lpOffsetHpa": -10.5,
     "lpDistanceKm": 203.2,
     "accUncertain": false,
-    "trendDataStatus": "ok",
+    "trendDataStatus": "stale: RuntimeError",
     "qualityFlags": [
       "lp_favored_alignment",
       "lp_near_favored_sector",
       "pressure_fall_accelerating",
-      "sea_field_spread_high"
+      "sea_field_spread_high",
+      "stale_due_to_failed_update"
     ],
     "selectedTimes": {
       "now": {
@@ -129,7 +130,7 @@
   },
   "output": {
     "level": "YEL",
-    "phase": "PITERAQ BUILDING",
+    "phase": "STALE (PITERAQ BUILDING)",
     "message": "YEL51 12-24T RES30 TRG80 CPL64 ICE1014 SEA974 GR40.8 AG10 SF620.8 LPB42 LPV-0N LPD0 LPG73 VG-12 CG12 CT24+19"
   }
 }
