@@ -474,6 +474,8 @@
       const phase = output.phase || data.phase || '–';
       const risk = scores.risk ?? data.risk;
       const watch = derived.watch ?? data.watch;
+      const loadLevel = derived.katabaticReadinessLevel || data.katabaticReadinessLevel || 'LOW';
+      const pitLevel = derived.piteraqHazardLevel || data.piteraqHazardLevel || level;
       const sustainedStage = derived.sustainedPiteraqStage || data.sustainedPiteraqStage || null;
 
       document.getElementById('hero-location').textContent = location;
@@ -486,10 +488,10 @@
       chip.textContent = level;
       chip.className = `chip ${chipClass(level)}`;
 
-      document.getElementById('risk-phase').textContent = phase || '–';
+      document.getElementById('risk-phase').textContent = `${phase || '–'} · LOAD ${loadLevel} · PIT ${pitLevel}`;
       document.getElementById('risk-watch').textContent = sustainedStage && sustainedStage !== 'none'
-        ? `Watch ${watch ? 'ON' : 'OFF'} · sustained ${sustainedStage.toUpperCase()}`
-        : `Watch ${watch ? 'ON' : 'OFF'}`;
+        ? `Ladning ${loadLevel} · Piteraq ${pitLevel} · sustained ${sustainedStage.toUpperCase()}`
+        : `Ladning ${loadLevel} · Piteraq ${pitLevel}`;
 
       const trendText = derived.trendDataStatus || data.trendDataStatus || '–';
       const trendEl = document.getElementById('trend-status');
