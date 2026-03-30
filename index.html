@@ -490,9 +490,7 @@
 
       document.getElementById('risk-phase').textContent =
         `LOAD ${loadLevel} · PIT ${pitLevel}`;
-      document.getElementById('risk-watch').textContent = sustainedStage && sustainedStage !== 'none'
-        ? `Ladning ${loadLevel} · Piteraq ${pitLevel} · sustained ${sustainedStage.toUpperCase()}`
-        : `Ladning ${loadLevel} · Piteraq ${pitLevel}`;
+      document.getElementById('risk-watch').textContent = '';
 
       const trendText = derived.trendDataStatus || data.trendDataStatus || '–';
       const trendEl = document.getElementById('trend-status');
