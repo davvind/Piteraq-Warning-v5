@@ -790,24 +790,12 @@
       }
     });
 
-    document.getElementById('reload-btn').addEventListener('click', async () => {
-      const btn = document.getElementById('reload-btn');
-      const original = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Oppdaterer …';
-      try {
-        await refreshAll();
-        btn.textContent = 'Oppdatert';
-        setTimeout(() => {
-          btn.textContent = original;
-          btn.disabled = false;
-        }, 900);
-      } catch (err) {
-        btn.textContent = original;
-        btn.disabled = false;
-        alert(`Kunne ikke laste nye data: ${err.message}`);
-      }
-    });
+document.getElementById('reload-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('reload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Tømmer cache …';
+  await hardReloadApp();
+});
 
     loadSummary().catch(err => {
       document.getElementById('msg-box').textContent =
