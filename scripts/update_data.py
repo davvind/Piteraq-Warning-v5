@@ -409,6 +409,9 @@ def write_summary_file(payload):
         "katabaticLoadingStage": derived.get("katabaticLoadingStage"),
         "katabaticColdHits24h": derived.get("katabaticColdHits24h"),
         "katabaticDeepColdHits24h": derived.get("katabaticDeepColdHits24h"),
+        "katabaticReadinessLevel": derived.get("katabaticReadinessLevel"),
+        "katabaticReadinessColor": derived.get("katabaticReadinessColor"),
+        "piteraqHazardLevel": derived.get("piteraqHazardLevel"),
     }
 
     save_json(SUMMARY_FILE, summary)
@@ -1004,14 +1007,28 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
     return history, fetch_errors
 
 
-def classify_risk(score):
+def classify_risk(score):def classify_loading_level(score):
+    if not is_num(score):
+        return "LOW"
     if score >= 75:
-        return "RED", "PITERAQ WARNING", "0-6T"
+        return "CRITICAL"
     if score >= 55:
-        return "ORG", "PITERAQ LIKELY", "6-12T"
+        return "LOADED"
     if score >= 35:
-        return "YEL", "PITERAQ BUILDING", "12-24T"
-    return "GRN", "PITERAQ LOW", "12-24T"
+        return "BUILDING"
+    return "LOW"
+
+
+def classify_loading_color(score):
+    if not is_num(score):
+        return "GRN"
+    if score >= 75:
+        return "RED"
+    if score >= 55:
+        return "ORG"
+    if score >= 35:
+        return "YEL"
+    return "GRN"
 
 
 def gradient_boost(gradient_hpa):
@@ -1574,6 +1591,8 @@ def build_payload(now_dt):
     katabatic_loading_stage = loading["stage"]
     katabatic_cold_hits = loading["cold_hits"]
     katabatic_deep_cold_hits = loading["deep_cold_hits"]
+    loading_level = classify_loading_level(katabatic_loading_score)
+    loading_color = classify_loading_color(katabatic_loading_score)
 
     watch = (
         (
@@ -1691,12 +1710,14 @@ def build_payload(now_dt):
     lad_tag = " LAD" if ladning_active else ""
 
     message = (
-        f"{level}{int(round(risk))} {horizon}{trend_tag}{lad_tag} "
+        f"PIT {level}{int(round(risk))} "
+        f"LOAD {loading_level} "
+        f"{horizon}{trend_tag} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
         f"ICE{ice_pressure:.0f} SEA{sea_pressure:.0f} "
-        f"GR{gradient:.1f} {ag_tag} "
+        f"GR{gradient:.1f} "
         f"SF6{fmt_msg_num(sf6, signed=True)} "
-        f"{lpb_tag} {lpv_tag} {lpd_tag} {lpg_tag} {spt_tag} "
+        f"{lpb_tag} {lpv_tag} {lpd_tag} {lpg_tag} "
         f"{vg_tag} {cg_tag} {ct24_tag}"
     )
 
@@ -1809,6 +1830,9 @@ def build_payload(now_dt):
             "katabaticLoadingStage": katabatic_loading_stage,
             "katabaticColdHits24h": katabatic_cold_hits,
             "katabaticDeepColdHits24h": katabatic_deep_cold_hits,
+            "katabaticReadinessLevel": loading_level,
+            "katabaticReadinessColor": loading_color,
+            "piteraqHazardLevel": level,            
             "lpOffsetHpa": round(lp_offset_hpa, 1) if is_num(lp_offset_hpa) else None,
             "lpDistanceKm": round(lp_distance_km, 1) if is_num(lp_distance_km) else None,
             "accUncertain": acc_uncertain,
