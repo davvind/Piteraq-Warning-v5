@@ -1599,16 +1599,23 @@ def build_payload(now_dt):
     risk = base * (0.56 + 0.44 * (coupling / 100.0))
     risk = max(risk, 0.26 * katabatic_loading_score + 0.74 * risk)
 
-    if loading["loading"]:
-        risk = max(risk, 36.0)
-    if loading["primed"]:
-        risk = max(risk, 44.0)
-    if sustained["watch"]:
-        risk = max(risk, 52.0)
-    if sustained["likely"]:
-        risk = max(risk, 68.0)
-    if sustained["warning"]:
-        risk = max(risk, 82.0)
+if katabatic_loading_score >= 40:
+    risk = max(risk, 30.0)
+if katabatic_loading_score >= 55:
+    risk = max(risk, 36.0)
+if katabatic_loading_score >= 70:
+    risk = max(risk, 44.0)
+
+if loading["loading"]:
+    risk = max(risk, 38.0)
+if loading["primed"]:
+    risk = max(risk, 48.0)
+if sustained["watch"]:
+    risk = max(risk, 55.0)
+if sustained["likely"]:
+    risk = max(risk, 70.0)
+if sustained["warning"]:
+    risk = max(risk, 82.0)
 
     piteraq_mismatch = (
         is_num(reservoir) and reservoir < 15
@@ -1628,17 +1635,19 @@ def build_payload(now_dt):
 
     level, phase, horizon = classify_risk(risk)
 
-    if sustained["warning"]:
-        phase = "PITERAQ WARNING"
-        horizon = "0-6T"
-    elif sustained["likely"] and level in {"YEL", "ORG", "RED"}:
-        phase = "PITERAQ SUSTAINED"
-    elif sustained["watch"] and level == "YEL":
-        phase = "PITERAQ WATCH"
-    elif loading["primed"] and level == "YEL":
-        phase = "KATABATIC PRIMED"
-    elif loading["loading"] and level == "YEL":
-        phase = "KATABATIC LOADING"
+if sustained["warning"]:
+    phase = "PITERAQ WARNING"
+    horizon = "0-6T"
+elif sustained["likely"] and level in {"YEL", "ORG", "RED"}:
+    phase = "PITERAQ SUSTAINED"
+elif sustained["watch"] and level in {"YEL", "ORG"}:
+    phase = "PITERAQ WATCH"
+elif loading["primed"] and level in {"YEL", "ORG"}:
+    phase = "KATABATIC PRIMED"
+elif loading["loading"] and level == "YEL":
+    phase = "KATABATIC LOADING"
+elif katabatic_loading_score >= 40 and level == "YEL":
+    phase = "KATABATIC BUILDING"
 
     if piteraq_mismatch and phase == "PITERAQ BUILDING":
         phase = "SYNOPTIC BUILDING"
