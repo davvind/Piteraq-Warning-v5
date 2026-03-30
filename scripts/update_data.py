@@ -1178,15 +1178,17 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
             score += 10.0
         elif cold_now >= 36.0:
             score += 6.0
+        elif cold_now >= 34.0:
+            score += 4.0
 
     score = clamp(score, 0.0, 100.0)
 
     loading = (
         is_num(cold_now) and cold_now >= 32.0
-        and is_num(dT_coast_ice_now) and dT_coast_ice_now >= 30.0
+        and is_num(dT_coast_ice_now) and dT_coast_ice_now >= 28.0
         and (
-            cold_hits >= 1 
-            or cold_now >= 36.0
+            cold_hits >= 1
+            or cold_now >= 35.0
         )
     )
     primed = (
@@ -1610,7 +1612,7 @@ def build_payload(now_dt):
         risk = max(risk, 44.0)
 
     if loading["loading"]:
-        risk = max(risk, 38.0)
+        risk = max(risk, 42.0)
     if loading["primed"]:
         risk = max(risk, 48.0)
     if sustained["watch"]:
