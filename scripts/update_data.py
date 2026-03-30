@@ -1722,14 +1722,13 @@ def build_payload(now_dt):
 
     message = (
         f"PIT {level}{int(round(risk))} "
-        f"LOAD {loading_level}/{loading_color} "
-        f"{horizon}{trend_tag} "
+        f"LOAD {loading_level} "
+        f"H{horizon.strip()} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
-        f"ICE{ice_pressure:.0f} SEA{sea_pressure:.0f} "
         f"GR{gradient:.1f} "
-        f"SF6{fmt_msg_num(sf6, signed=True)} "
-        f"{lpb_tag} {lpv_tag} {lpd_tag} {lpg_tag} "
-        f"{vg_tag} {cg_tag} {ct24_tag}"
+        f"{lpv_tag} {lpd_tag} "
+        f"VG{int(round(vent_now)) if is_num(vent_now) else '?'} "
+        f"CG{int(round(coast_gate_now)) if is_num(coast_gate_now) else '?'}"
     )
 
     payload = {
