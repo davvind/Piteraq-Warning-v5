@@ -740,6 +740,31 @@
       }
     }
 
+    async function hardReloadApp() {
+      try {
+      // Fjern service workers
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const reg of regs) {
+            await reg.unregister();
+      }
+    }
+
+      // Tøm cache storage
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+    }
+
+      // Hard reload med ny URL
+      const url = new URL(window.location.href);
+      url.searchParams.set('reload', Date.now().toString());
+      window.location.replace(url.toString());
+
+  } catch (err) {
+    alert(`Kunne ikke tømme cache: ${err.message}`);
+  }
+    
     document.getElementById('copy-btn').addEventListener('click', async () => {
       const text = document.getElementById('msg-box').textContent || '';
       try {
