@@ -1008,7 +1008,39 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
 
 
 def classify_risk(score):
-    def classify_loading_level(score):
+    if score >= 85:
+        return "RED", "PITERAQ WARNING", "0-6T"
+    if score >= 65:
+        return "ORG", "PITERAQ LIKELY", "6-12T"
+    if score >= 45:
+        return "YEL", "PITERAQ BUILDING", "12-24T"
+    return "GRN", "PITERAQ LOW", "24-48T"
+
+
+def classify_loading_level(score):
+    if not is_num(score):
+        return "LOW"
+    elif score >= 75:
+        return "CRITICAL"
+    elif score >= 55:
+        return "LOADED"
+    elif score >= 35:
+        return "BUILDING"
+    else:
+        return "LOW"
+
+
+def classify_loading_color(score):
+    if not is_num(score):
+        return "GRN"
+    elif score >= 75:
+        return "RED"
+    elif score >= 55:
+        return "ORG"
+    elif score >= 35:
+        return "YEL"
+    else:
+        return "GRN"
     if not is_num(score):
         return "LOW"
     if score >= 75:
