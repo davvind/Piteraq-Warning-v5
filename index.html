@@ -488,7 +488,8 @@
       chip.textContent = level;
       chip.className = `chip ${chipClass(level)}`;
 
-      document.getElementById('risk-phase').textContent = `${phase || '–'} · LOAD ${loadLevel} · PIT ${pitLevel}`;
+      document.getElementById('risk-phase').textContent =
+        `LOAD ${loadLevel} · PIT ${pitLevel}`;
       document.getElementById('risk-watch').textContent = sustainedStage && sustainedStage !== 'none'
         ? `Ladning ${loadLevel} · Piteraq ${pitLevel} · sustained ${sustainedStage.toUpperCase()}`
         : `Ladning ${loadLevel} · Piteraq ${pitLevel}`;
