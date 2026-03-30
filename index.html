@@ -761,9 +761,11 @@
       url.searchParams.set('reload', Date.now().toString());
       window.location.replace(url.toString());
 
-  } catch (err) {
-    alert(`Kunne ikke tømme cache: ${err.message}`);
-  }
+      } catch (err) {
+      alert(`Kunne ikke tømme cache: ${err.message}`);
+      }
+    }
+      
     
     document.getElementById('copy-btn').addEventListener('click', async () => {
       const text = document.getElementById('msg-box').textContent || '';
