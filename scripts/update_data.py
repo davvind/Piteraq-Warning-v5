@@ -405,6 +405,10 @@ def write_summary_file(payload):
         "sustainedPiteraqStage": derived.get("sustainedPiteraqStage"),
         "sustainedPiteraqNearHits": derived.get("sustainedPiteraqNearHits"),
         "sustainedPiteraqStrongHits": derived.get("sustainedPiteraqStrongHits"),
+        "katabaticLoadingScore": derived.get("katabaticLoadingScore"),
+        "katabaticLoadingStage": derived.get("katabaticLoadingStage"),
+        "katabaticColdHits24h": derived.get("katabaticColdHits24h"),
+        "katabaticDeepColdHits24h": derived.get("katabaticDeepColdHits24h"),
     }
 
     save_json(SUMMARY_FILE, summary)
@@ -1038,10 +1042,10 @@ def sustained_piteraq_hit(row, strong=False):
             and is_num(cold) and cold >= 36.0
         )
     return (
-        is_num(gradient) and gradient >= 18.0
-        and is_num(coast_gate) and coast_gate >= 16.0
-        and is_num(ventil) and ventil >= 3.0
-        and is_num(cold) and cold >= 32.0
+        is_num(gradient) and gradient >= 16.0
+        and is_num(coast_gate) and coast_gate >= 12.0
+        and is_num(ventil) and ventil >= 2.0
+        and is_num(cold) and cold >= 30.0
     )
 
 
@@ -1127,6 +1131,74 @@ def sustained_piteraq_metrics(history, now_dt, current_snapshot):
         "watch": sustained_watch,
         "likely": sustained_likely,
         "warning": sustained_warning,
+        "stage": stage,
+    }
+
+
+def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_now, ice_temp_trend_24h, ice_temp_trend_72h, ice_pressure_anom_now, ice_anom_72_mean):
+    recent_rows = recent_piteraq_rows(history, now_dt, hours=24)
+    cold_hits = sum(1 for row in recent_rows if is_num(row.get("coldSupportNow")) and row.get("coldSupportNow") >= 34.0)
+    deep_cold_hits = sum(1 for row in recent_rows if is_num(row.get("coldSupportNow")) and row.get("coldSupportNow") >= 38.0)
+
+    cold_now = current_snapshot.get("coldSupportNow")
+    coast_gate_now = current_snapshot.get("coastGate")
+    ventil_now = current_snapshot.get("ventilIndex")
+
+    cold_now_score = 100.0 * norm(cold_now, 30.0, 46.0)
+    cold_mean_score = 100.0 * norm(current_snapshot.get("coldSupportNow"), 30.0, 46.0)
+    if is_num(ice_anom_72_mean):
+        pressure_memory_score = 100.0 * norm(ice_anom_72_mean, -12.0, 4.0)
+    else:
+        pressure_memory_score = 0.0
+    dT_score = 100.0 * norm(dT_coast_ice_now, 28.0, 42.0)
+    trend24_score = 100.0 * norm(-ice_temp_trend_24h, 0.0, 6.0) if is_num(ice_temp_trend_24h) else 0.0
+    trend72_score = 100.0 * norm(-ice_temp_trend_72h, 0.0, 10.0) if is_num(ice_temp_trend_72h) else 0.0
+    persistence_score = clamp(20.0 * cold_hits + 10.0 * deep_cold_hits, 0.0, 100.0)
+    gate_support_score = 100.0 * norm(coast_gate_now, 8.0, 22.0) if is_num(coast_gate_now) else 0.0
+    ventil_support_score = 100.0 * norm(ventil_now, 1.0, 5.0) if is_num(ventil_now) else 0.0
+    pressure_now_score = 100.0 * norm(ice_pressure_anom_now, -12.0, 2.0) if is_num(ice_pressure_anom_now) else 0.0
+
+    score = (
+        0.24 * cold_now_score
+        + 0.14 * pressure_memory_score
+        + 0.14 * dT_score
+        + 0.10 * trend24_score
+        + 0.08 * trend72_score
+        + 0.16 * persistence_score
+        + 0.08 * gate_support_score
+        + 0.06 * ventil_support_score
+    )
+    if is_num(ice_pressure_anom_now):
+        score += 0.04 * pressure_now_score
+    score = clamp(score, 0.0, 100.0)
+
+    loading = (
+        is_num(cold_now) and cold_now >= 32.0
+        and is_num(dT_coast_ice_now) and dT_coast_ice_now >= 30.0
+        and cold_hits >= 2
+    )
+    primed = (
+        is_num(cold_now) and cold_now >= 36.0
+        and is_num(dT_coast_ice_now) and dT_coast_ice_now >= 34.0
+        and cold_hits >= 2
+        and (
+            (is_num(coast_gate_now) and coast_gate_now >= 12.0)
+            or (is_num(ventil_now) and ventil_now >= 2.0)
+        )
+    )
+
+    stage = "none"
+    if primed:
+        stage = "primed"
+    elif loading:
+        stage = "loading"
+
+    return {
+        "score": score,
+        "cold_hits": cold_hits,
+        "deep_cold_hits": deep_cold_hits,
+        "loading": loading,
+        "primed": primed,
         "stage": stage,
     }
 
@@ -1474,30 +1546,54 @@ def build_payload(now_dt):
     sustained_near_hits = sustained["near_hits"]
     sustained_strong_hits = sustained["strong_hits"]
 
+    loading = katabatic_loading_metrics(
+        history,
+        dt_now,
+        current_snapshot,
+        dT_coast_ice,
+        ice_temp_trend_24h,
+        ice_temp_trend_72h,
+        ice_pressure_anom_now,
+        ice_anom_72_mean,
+    )
+    katabatic_loading_score = loading["score"]
+    katabatic_loading_stage = loading["stage"]
+    katabatic_cold_hits = loading["cold_hits"]
+    katabatic_deep_cold_hits = loading["deep_cold_hits"]
+
     watch = (
-        (reservoir >= 30 or potential >= 45)
-        and coupling >= 60
-        and (
-            gradient >= 20
-            or (is_num(d6) and d6 >= 2)
-            or (is_num(sf6) and sf6 >= 2)
-            or (is_num(pressure_fall_acceleration) and pressure_fall_acceleration >= 1.5)
-            or (is_num(acc_g) and acc_g >= 1)
-            or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
-            or (is_num(vent_now) and vent_now >= 8)
-            or (is_num(coast_gate_now) and coast_gate_now >= 16)
-            or (
-                lp_approaching_favored
-                and is_num(lp_distance_to_favored_deg)
-                and lp_distance_to_favored_deg <= 8
-                and coupling >= 55
+        (
+            (reservoir >= 30 or potential >= 45)
+            and coupling >= 60
+            and (
+                gradient >= 20
+                or (is_num(d6) and d6 >= 2)
+                or (is_num(sf6) and sf6 >= 2)
+                or (is_num(pressure_fall_acceleration) and pressure_fall_acceleration >= 1.5)
+                or (is_num(acc_g) and acc_g >= 1)
+                or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
+                or (is_num(vent_now) and vent_now >= 8)
+                or (is_num(coast_gate_now) and coast_gate_now >= 16)
+                or (
+                    lp_approaching_favored
+                    and is_num(lp_distance_to_favored_deg)
+                    and lp_distance_to_favored_deg <= 8
+                    and coupling >= 55
+                )
             )
         )
-    ) or sustained["watch"]
+        or sustained["watch"]
+        or loading["primed"]
+    )
 
     base = 0.60 * trigger + 0.32 * reservoir + 0.08 * potential
     risk = base * (0.56 + 0.44 * (coupling / 100.0))
+    risk = max(risk, 0.26 * katabatic_loading_score + 0.74 * risk)
 
+    if loading["loading"]:
+        risk = max(risk, 36.0)
+    if loading["primed"]:
+        risk = max(risk, 44.0)
     if sustained["watch"]:
         risk = max(risk, 52.0)
     if sustained["likely"]:
@@ -1516,9 +1612,9 @@ def build_payload(now_dt):
         trigger *= 0.90
         quality_flags.append("synoptic_storm_more_than_piteraq")
 
-    if trigger < 20:
+    if trigger < 20 and not loading["primed"] and not sustained["watch"]:
         risk = min(risk, 34)
-    if trigger < 35 and reservoir < 25:
+    if trigger < 35 and reservoir < 25 and not loading["primed"] and not sustained["watch"]:
         risk = min(risk, 24)
 
     level, phase, horizon = classify_risk(risk)
@@ -1526,10 +1622,14 @@ def build_payload(now_dt):
     if sustained["warning"]:
         phase = "PITERAQ WARNING"
         horizon = "0-6T"
-    elif sustained["likely"] and level in {"YEL", "ORG"}:
+    elif sustained["likely"] and level in {"YEL", "ORG", "RED"}:
         phase = "PITERAQ SUSTAINED"
     elif sustained["watch"] and level == "YEL":
         phase = "PITERAQ WATCH"
+    elif loading["primed"] and level == "YEL":
+        phase = "KATABATIC PRIMED"
+    elif loading["loading"] and level == "YEL":
+        phase = "KATABATIC LOADING"
 
     if piteraq_mismatch and phase == "PITERAQ BUILDING":
         phase = "SYNOPTIC BUILDING"
@@ -1542,6 +1642,10 @@ def build_payload(now_dt):
     elif watch and level == "GRN":
         phase = "WATCH"
 
+    if loading["loading"]:
+        quality_flags.append("katabatic_loading")
+    if loading["primed"]:
+        quality_flags.append("katabatic_primed")
     if sustained["watch"]:
         quality_flags.append("sustained_piteraq_watch")
     if sustained["likely"]:
@@ -1568,7 +1672,7 @@ def build_payload(now_dt):
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
         f"ICE{ice_pressure:.0f} SEA{sea_pressure:.0f} "
         f"GR{gradient:.1f} {ag_tag} "
-        f"SF6{fmt_msg_num(sf6, signed=True)}"
+        f"SF6{fmt_msg_num(sf6)} "
         f"{lpb_tag} {lpv_tag} {lpd_tag} {lpg_tag} {spt_tag} "
         f"{vg_tag} {cg_tag} {ct24_tag}"
     )
@@ -1678,6 +1782,10 @@ def build_payload(now_dt):
             "sustainedPiteraqStage": sustained_stage,
             "sustainedPiteraqNearHits": sustained_near_hits,
             "sustainedPiteraqStrongHits": sustained_strong_hits,
+            "katabaticLoadingScore": int(round(katabatic_loading_score)),
+            "katabaticLoadingStage": katabatic_loading_stage,
+            "katabaticColdHits24h": katabatic_cold_hits,
+            "katabaticDeepColdHits24h": katabatic_deep_cold_hits,
             "lpOffsetHpa": round(lp_offset_hpa, 1) if is_num(lp_offset_hpa) else None,
             "lpDistanceKm": round(lp_distance_km, 1) if is_num(lp_distance_km) else None,
             "accUncertain": acc_uncertain,
@@ -1849,6 +1957,10 @@ def write_stale_payload(error):
             "sustainedPiteraqStage": None,
             "sustainedPiteraqNearHits": None,
             "sustainedPiteraqStrongHits": None,
+            "katabaticLoadingScore": None,
+            "katabaticLoadingStage": None,
+            "katabaticColdHits24h": None,
+            "katabaticDeepColdHits24h": None,
             "lpOffsetHpa": None,
             "lpDistanceKm": None,
             "accUncertain": False,
