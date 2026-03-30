@@ -1,12 +1,12 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-30 22:34 UTC",
+    "updatedAt": "2026-03-30 23:29 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
     "instanceId": "2026-03-30T180000Z",
-    "lastSuccessfulUpdate": "2026-03-30 22:34 UTC",
+    "lastSuccessfulUpdate": "2026-03-30 23:29 UTC",
     "lastAttemptFailed": null,
     "stale": false
   },
@@ -125,7 +125,7 @@
     "selectedTimes": {
       "now": {
         "validTime": "2026-03-30T23:00:00.000Z",
-        "diffHours": 0.43
+        "diffHours": 0.49
       },
       "h6_from_history": "2026-03-30T17:00:00Z",
       "h12_from_history": "2026-03-30T11:00:00Z",
@@ -141,6 +141,6 @@
   "output": {
     "level": "GRN",
     "phase": "PITERAQ LOW",
-    "message": "PIT GRN5 LOAD LOW H24-48T RES10 TRG2 CPL27 GR1.9 LPV+58W LPD16 VG0 CG3"
+    "message": "GRN5 LOADLOW PITGRN H24-48T RES10 TRG2 CPL27 GR1.9 LPV+58W LPD16 VG0 CG3"
   }
 }
