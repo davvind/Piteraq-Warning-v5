@@ -2,7 +2,7 @@
 // Strategi: cache app-skallet (HTML/JS/CSS), la API-kall gå til nett.
 // Øker aldri cachet API-data — varselet skal alltid være ferskt.
 
-const CACHE_NAME = 'piteraq-v1';
+const CACHE_NAME = 'piteraq-v2';
 
 const APP_SHELL = [
   '/Piteraq-Warning-v5/',
