@@ -400,7 +400,18 @@
       return null;
     }
 
-    function buildCompactMessage(data) {
+function buildCompactMessage(data) {
+  const output = data.output || {};
+
+  // 🔥 NY – støtter både summary og data
+  const message =
+    output.message ||
+    data.message ||
+    (data.output && data.output.message);
+
+  if (typeof message === 'string' && message.trim()) {
+    return message.trim();
+  }
       const scores = data.scores || {};
       const inputs = data.inputs || {};
       const derived = data.derived || {};
