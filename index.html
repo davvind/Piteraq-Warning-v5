@@ -268,6 +268,9 @@
 </head>
 <body>
   <main class="app">
+    <div id="stale-warning" style="display:none; background:#ff6b6b; color:#06111e; font-weight:900; border-radius:16px; padding:14px 18px;">
+      ⚠️ Data kan være utdatert — sist oppdatert for mer enn 2 timer siden
+    </div>
     <section class="card hero">
       <h1>Piteraq Monitor</h1>
 
@@ -422,6 +425,9 @@ function buildCompactMessage(data) {
 
       const location = meta.location || data.location || 'TASIILAQ';
       const updatedAt = meta.updatedAt || data.updatedAt || '–';
+      const ageMin = updatedAt !== '–' ? (Date.now() - new Date(updatedAt).getTime()) / 60000 : 0;
+      const staleEl = document.getElementById('stale-warning');
+      if (staleEl) staleEl.style.display = ageMin > 120 ? 'block' : 'none';
       const model = meta.model || data.model || '–';
 
       const level = output.level || data.level || 'GRN';
