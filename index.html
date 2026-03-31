@@ -401,6 +401,25 @@
     }
 
 function buildCompactMessage(data) {
+  // 🔥 hent message uansett struktur
+  const message =
+    (data.output && data.output.message) ||
+    data.message;
+
+  if (typeof message === 'string' && message.trim()) {
+    return message.trim();
+  }
+
+  // fallback (gammel)
+  const scores = data.scores || {};
+  const inputs = data.inputs || {};
+  const derived = data.derived || {};
+
+  const level = data.level || 'GRN';
+  const risk = scores.risk;
+
+  return `${level}${fmt0(risk)} (fallback)`;
+}
   const output = data.output || {};
 
   // 🔥 NY – støtter både summary og data
