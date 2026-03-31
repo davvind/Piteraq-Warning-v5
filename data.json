@@ -1,12 +1,12 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-31 01:05 UTC",
+    "updatedAt": "2026-03-31 01:10 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
     "instanceId": "2026-03-30T210000Z",
-    "lastSuccessfulUpdate": "2026-03-31 01:05 UTC",
+    "lastSuccessfulUpdate": "2026-03-31 01:10 UTC",
     "lastAttemptFailed": null,
     "stale": false
   },
@@ -126,7 +126,7 @@
     "selectedTimes": {
       "now": {
         "validTime": "2026-03-31T01:00:00.000Z",
-        "diffHours": 0.09
+        "diffHours": 0.18
       },
       "h6_from_history": "2026-03-30T18:00:00Z",
       "h12_from_history": "2026-03-30T11:00:00Z",
