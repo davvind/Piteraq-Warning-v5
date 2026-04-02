@@ -1401,7 +1401,8 @@ def build_payload(now_dt):
 
     now_fields = fields_for_valid_time(cache, valid_now)
     if now_fields is None:
-        raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
+        write_stale_payload(RuntimeError("Kunne ikke lese now-felter fra DMI-data."))
+        return load_json(DATA_FILE, {})
 
     current_snapshot = build_snapshot(dt_now, now_fields)
     history.append(current_snapshot)
