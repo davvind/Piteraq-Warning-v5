@@ -804,12 +804,8 @@ def fields_for_valid_time(cache, valid_time):
         else None
     )
 
-    cloud_cover_mean = avg(cloud_vals)
-    radiative_cooling_proxy = (
-        clamp(1.0 - cloud_cover_mean, 0.0, 1.0)
-        if is_num(cloud_cover_mean)
-        else None
-    )
+    cloud_cover_mean = None
+    radiative_cooling_proxy = None
 
     if not is_num(ice_temp_c):
         quality_flags.append("missing_ice_temperature_all")
