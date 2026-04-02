@@ -766,7 +766,7 @@ def fields_for_valid_time(cache, valid_time):
         t = row.get("temperature-2m")
         w = row.get("wind-speed-100m")
         wd = row.get("wind-direction-100m")
-        cc = row.get("total-cloud-cover")
+        cc = None
 
         pressure_vals.append((p / 100.0) if is_num(p) else None)
         temp_vals.append(kelvin_to_celsius(t) if is_num(t) else None)
