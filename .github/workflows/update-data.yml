@@ -5,12 +5,20 @@ on:
     - cron: "0 * * * *"
   workflow_dispatch:
 
+concurrency:
+  group: piteraq-update
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   update:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PITERAQ_ENABLE_BONUS: "1"
 
     steps:
       - name: Check out repository
@@ -34,4 +42,3 @@ jobs:
           git add data.json history.json summary.json
           git diff --cached --quiet || git commit -m "Update piteraq data"
           git push
-
