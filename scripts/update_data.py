@@ -1400,11 +1400,14 @@ def build_payload(now_dt):
     history = sort_and_dedup_history(load_json(HISTORY_FILE, []))
 
     instance_ids = list_instances()
-    candidate_instance_ids = list(reversed(instance_ids[-6:]))
+    latest = instance_ids[-1]
+    prev_instance = instance_ids[-2] if len(instance_ids) >= 2 else None
+    candidate_instance_ids = [latest] + ([prev_instance] if prev_instance else [])
+    older_instance_ids = [iid for iid in instance_ids[:-1][-5:] if iid != prev_instance]
 
     chosen_instance = None
     cache = None
-    fetch_errors_now = {}
+    fetch_errors = {}
     valid_now = None
     dt_now = None
     diff_now = None
@@ -1413,6 +1416,8 @@ def build_payload(now_dt):
     for iid in candidate_instance_ids:
         trial_cache = build_empty_cache()
         trial_errors = append_instance_to_cache(trial_cache, iid)
+        if trial_errors:
+            fetch_errors[iid] = trial_errors
 
         trial_valid_now, trial_dt_now, trial_diff_now, trial_now_fields = find_best_valid_time_with_fields(
             trial_cache, now_dt, tolerance_hours=TIME_TOLERANCE_HOURS
@@ -1421,15 +1426,11 @@ def build_payload(now_dt):
         if trial_now_fields is not None:
             chosen_instance = iid
             cache = trial_cache
-            fetch_errors_now = trial_errors
             valid_now = trial_valid_now
             dt_now = trial_dt_now
             diff_now = trial_diff_now
             now_fields = trial_now_fields
-            print(f"Using fallback DMI instance {iid} for now-fields")
             break
-
-    older_instance_ids = [iid for iid in instance_ids[:-1][-5:] if iid != chosen_instance]
 
     if now_fields is None:
         prev = load_json(DATA_FILE, {})
@@ -1475,9 +1476,6 @@ def build_payload(now_dt):
 
     save_json(HISTORY_FILE, history)
 
-    fetch_errors = {}
-    if fetch_errors_now:
-        fetch_errors[latest] = fetch_errors_now
     fetch_errors.update(fetch_errors_backfill)
 
     snap_6 = find_history_snapshot(
