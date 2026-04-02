@@ -487,7 +487,7 @@ def annotate_payload_quality(payload):
     payload["derived"] = derived
     payload["output"] = output
     payload["meta"] = meta
-    return annotate_payload_quality(payload)
+    return payload
 
 
 def write_summary_file(payload):
