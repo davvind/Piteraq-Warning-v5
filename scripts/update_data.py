@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
@@ -83,6 +84,9 @@ SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
 EXTRA_REQUEST_SLEEP = 0.6
 EXTRA_REQUEST_RETRIES = 2
+
+ENABLE_BONUS_FETCH = os.getenv("PITERAQ_ENABLE_BONUS", "1") == "1"
+
 
 TREND_TOLERANCES = {
     "h6": timedelta(hours=1.5),
@@ -1549,7 +1553,11 @@ def build_payload(now_dt):
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
     extra_errors = {}
-    cloud_bonus = fetch_cloud_cover_bonus(chosen_instance, valid_now) if chosen_instance and valid_now else None
+    cloud_bonus = (
+        fetch_cloud_cover_bonus(chosen_instance, valid_now)
+        if ENABLE_BONUS_FETCH and chosen_instance and valid_now
+        else None
+    )
     if isinstance(cloud_bonus, dict):
         now_fields["cloudCoverMean"] = cloud_bonus.get("cloudCoverMean")
         now_fields["radiativeCoolingProxy"] = cloud_bonus.get("radiativeCoolingProxy")
