@@ -1406,6 +1406,7 @@ def build_payload(now_dt):
             prev_meta["forecastInfo"] = "Now-felt manglet i DMI; beholdt siste gyldige datasett"
             prev_meta["lastAttemptFailed"] = "missing_now_fields"
             prev_meta["stale"] = True
+            prev_meta.setdefault("lastSuccessfulUpdate", prev_meta.get("updatedAt"))
 
             prev_derived["trendDataStatus"] = "stale: missing_now_fields"
             prev_derived["qualityFlags"] = sorted(set(qf + ["missing_now_fields", "stale_due_to_failed_update"]))
@@ -1416,7 +1417,7 @@ def build_payload(now_dt):
             prev["derived"] = prev_derived
             prev["output"] = prev_output
             return prev
-
+            
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
     current_snapshot = build_snapshot(dt_now, now_fields)
