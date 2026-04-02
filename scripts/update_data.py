@@ -649,6 +649,27 @@ def find_valid_time(master_axis, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS
     return best["validTime"], best["dt"], best_diff
 
 
+def find_best_valid_time_with_fields(cache, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
+    axis = build_master_time_axis(cache)
+    if not axis:
+        return None, None, None, None
+
+    candidates = []
+    for item in axis:
+        diff_h = abs((item["dt"] - target_dt).total_seconds()) / 3600.0
+        if diff_h <= tolerance_hours:
+            candidates.append((diff_h, item))
+
+    candidates.sort(key=lambda x: x[0])
+
+    for diff_h, item in candidates:
+        fields = fields_for_valid_time(cache, item["validTime"])
+        if fields is not None:
+            return item["validTime"], item["dt"], diff_h, fields
+
+    return None, None, None, None
+
+
 def get_row_for_valid_time(cache_block, point_name, valid_time):
     for row in cache_block[point_name]["rows"]:
         if row["validTime"] == valid_time:
@@ -1385,13 +1406,10 @@ def build_payload(now_dt):
     cache = build_empty_cache()
     fetch_errors_now = append_instance_to_cache(cache, latest)
 
-    axis = build_master_time_axis(cache)
-    valid_now, dt_now, diff_now = find_valid_time(axis, now_dt, tolerance_hours=TIME_TOLERANCE_HOURS)
-    if valid_now is None:
-        raise RuntimeError("Fant ikke gyldig now-tid i nyeste DMI-instance.")
-
-    now_fields = fields_for_valid_time(cache, valid_now)
-    if now_fields is None:
+    valid_now, dt_now, diff_now, now_fields = find_best_valid_time_with_fields(
+        cache, now_dt, tolerance_hours=TIME_TOLERANCE_HOURS
+    )
+    if valid_now is None or now_fields is None:
         prev = load_json(DATA_FILE, {})
         if isinstance(prev, dict) and prev.get("inputs") and prev.get("derived"):
             prev_meta = prev.get("meta", {})
@@ -1406,18 +1424,21 @@ def build_payload(now_dt):
             prev_meta["forecastInfo"] = "Now-felt manglet i DMI; beholdt siste gyldige datasett"
             prev_meta["lastAttemptFailed"] = "missing_now_fields"
             prev_meta["stale"] = True
-            prev_meta.setdefault("lastSuccessfulUpdate", prev_meta.get("updatedAt"))
+            if not prev_meta.get("lastSuccessfulUpdate"):
+                prev_meta["lastSuccessfulUpdate"] = prev_meta.get("updatedAt")
 
             prev_derived["trendDataStatus"] = "stale: missing_now_fields"
             prev_derived["qualityFlags"] = sorted(set(qf + ["missing_now_fields", "stale_due_to_failed_update"]))
 
-            prev_output["phase"] = f"STALE ({prev_output.get('phase', 'UNKNOWN')})"
+            phase0 = str(prev_output.get("phase", "UNKNOWN"))
+            if not phase0.startswith("STALE ("):
+                prev_output["phase"] = f"STALE ({phase0})"
 
             prev["meta"] = prev_meta
             prev["derived"] = prev_derived
             prev["output"] = prev_output
             return prev
-            
+
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
     current_snapshot = build_snapshot(dt_now, now_fields)
@@ -2090,7 +2111,9 @@ def write_stale_payload(error):
         existing["derived"] = derived
 
         existing_output = existing.get("output", {})
-        existing_output["phase"] = f"STALE ({existing_output.get('phase', 'UNKNOWN')})"
+        phase0 = str(existing_output.get("phase", "UNKNOWN"))
+        if not phase0.startswith("STALE ("):
+            existing_output["phase"] = f"STALE ({phase0})"
         existing["output"] = existing_output
 
         save_json(DATA_FILE, existing)
