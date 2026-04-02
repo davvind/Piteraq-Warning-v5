@@ -661,11 +661,15 @@ def find_best_valid_time_with_fields(cache, target_dt, tolerance_hours=TIME_TOLE
             candidates.append((diff_h, item))
 
     candidates.sort(key=lambda x: x[0])
+    print(f"Testing {len(candidates)} candidate validTimes near now")
 
     for diff_h, item in candidates:
         fields = fields_for_valid_time(cache, item["validTime"])
         if fields is not None:
+            print(f"ACCEPTED validTime {item['validTime']} (diff {diff_h:.2f}h)")
             return item["validTime"], item["dt"], diff_h, fields
+        else:
+            print(f"REJECTED validTime {item['validTime']} (diff {diff_h:.2f}h): no usable fields")
 
     return None, None, None, None
 
@@ -796,6 +800,7 @@ def fields_for_valid_time(cache, valid_time):
         cloud_vals.append(cc if is_num(cc) else None)
 
     if sum(1 for v in pressure_vals if is_num(v)) == 0:
+        print(f"fields_for_valid_time({valid_time}): rejected - no ice pressure")
         return None
 
     ice_pressure = weighted_mean(pressure_vals, [0.40, 0.35, 0.25])
@@ -881,6 +886,7 @@ def fields_for_valid_time(cache, valid_time):
             sea_temps.append(kelvin_to_celsius(row.get("temperature-2m")))
 
     if not sea_candidates:
+        print(f"fields_for_valid_time({valid_time}): rejected - no sea pressure candidates")
         return None
 
     sea_min = min(sea_candidates, key=lambda x: x["pressure"])
