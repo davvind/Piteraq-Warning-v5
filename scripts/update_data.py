@@ -46,6 +46,8 @@ ICE_POINTS = [
     {"name": "mouth", "lon": -40.3, "lat": 68.2},
 ]
 
+EXPECTED_DRAINAGE_BEARING = 158.0
+
 SEA_POINTS = [
     {"name": "W1", "lon": -34.9, "lat": 62.8},
     {"name": "W2", "lon": -33.7, "lat": 63.8},
@@ -69,7 +71,13 @@ MID_NAMES = ["C1", "C2", "M1", "M2", "M3"]
 EAST_NAMES = ["E1", "E2"]
 ALL_STRAIT_NAMES = WEST_NAMES + MID_NAMES + EAST_NAMES
 
-ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
+ICE_PARAMS = [
+    "pressure-sealevel",
+    "temperature-2m",
+    "wind-speed-100m",
+    "wind-direction-100m",
+    "total-cloud-cover",
+]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
 TREND_TOLERANCES = {
@@ -579,6 +587,8 @@ def append_instance_to_cache(cache, iid):
                     "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
                     "temperature-2m": safe_get(values.get("temperature-2m", []), i),
                     "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
+                    "wind-direction-100m": safe_get(values.get("wind-direction-100m", []), i),
+                    "total-cloud-cover": safe_get(values.get("total-cloud-cover", []), i),
                 }
             )
 
@@ -658,6 +668,24 @@ def weighted_mean(vals, weights):
     return sum(v * w for v, w in pairs) / sw
 
 
+def circular_mean_deg(values):
+    vals = [v for v in values if is_num(v)]
+    if not vals:
+        return None
+    s = sum(math.sin(math.radians(v)) for v in vals)
+    c = sum(math.cos(math.radians(v)) for v in vals)
+    if abs(s) < 1e-12 and abs(c) < 1e-12:
+        return None
+    return normalize_angle(math.degrees(math.atan2(s, c)))
+
+
+def direction_alignment_score(dir_deg, expected_bearing, max_bad=60.0):
+    if not (is_num(dir_deg) and is_num(expected_bearing)):
+        return None
+    diff = abs(signed_shortest_angle_diff(dir_deg, expected_bearing))
+    return clamp(1.0 - norm(diff, 0.0, max_bad), 0.0, 1.0)
+
+
 def centroid_low(candidates):
     valid = [c for c in candidates if is_num(c.get("pressure"))]
     if not valid:
@@ -722,6 +750,8 @@ def fields_for_valid_time(cache, valid_time):
     pressure_vals = []
     temp_vals = []
     wind_vals = []
+    wind_dir_vals = []
+    cloud_vals = []
     quality_flags = []
 
     for name in ["source", "mid", "mouth"]:
@@ -730,15 +760,21 @@ def fields_for_valid_time(cache, valid_time):
             pressure_vals.append(None)
             temp_vals.append(None)
             wind_vals.append(None)
+            wind_dir_vals.append(None)
+            cloud_vals.append(None)
             continue
 
         p = row.get("pressure-sealevel")
         t = row.get("temperature-2m")
         w = row.get("wind-speed-100m")
+        wd = row.get("wind-direction-100m")
+        cc = row.get("total-cloud-cover")
 
         pressure_vals.append((p / 100.0) if is_num(p) else None)
         temp_vals.append(kelvin_to_celsius(t) if is_num(t) else None)
         wind_vals.append(w if is_num(w) else None)
+        wind_dir_vals.append(wd if is_num(wd) else None)
+        cloud_vals.append(cc if is_num(cc) else None)
 
     if sum(1 for v in pressure_vals if is_num(v)) == 0:
         return None
@@ -746,6 +782,36 @@ def fields_for_valid_time(cache, valid_time):
     ice_pressure = weighted_mean(pressure_vals, [0.40, 0.35, 0.25])
     ice_temp_c = weighted_mean(temp_vals, [0.45, 0.35, 0.20])
     ice_wind = weighted_mean(wind_vals, [0.20, 0.35, 0.45])
+
+    ice_wind_dir_mean = circular_mean_deg(wind_dir_vals)
+    dir_align_scores = [
+        direction_alignment_score(d, EXPECTED_DRAINAGE_BEARING)
+        for d in wind_dir_vals
+        if is_num(d)
+    ]
+    katabatic_direction_alignment = avg(dir_align_scores)
+
+    source_temp = temp_vals[0]
+    mid_temp = temp_vals[1]
+    mouth_temp = temp_vals[2]
+
+    ice_stability_proxy = (
+        source_temp - mouth_temp
+        if is_num(source_temp) and is_num(mouth_temp)
+        else None
+    )
+    ice_mid_stability_proxy = (
+        mid_temp - mouth_temp
+        if is_num(mid_temp) and is_num(mouth_temp)
+        else None
+    )
+
+    cloud_cover_mean = avg(cloud_vals)
+    radiative_cooling_proxy = (
+        clamp(1.0 - cloud_cover_mean, 0.0, 1.0)
+        if is_num(cloud_cover_mean)
+        else None
+    )
 
     if not is_num(ice_temp_c):
         quality_flags.append("missing_ice_temperature_all")
@@ -758,6 +824,19 @@ def fields_for_valid_time(cache, valid_time):
         ice_wind = None
     elif sum(1 for v in wind_vals if is_num(v)) < 3:
         quality_flags.append("missing_ice_wind_partial")
+
+    if sum(1 for v in wind_dir_vals if is_num(v)) == 0:
+        quality_flags.append("missing_ice_wind_direction_all")
+    elif sum(1 for v in wind_dir_vals if is_num(v)) < 3:
+        quality_flags.append("missing_ice_wind_direction_partial")
+
+    if sum(1 for v in cloud_vals if is_num(v)) == 0:
+        quality_flags.append("missing_cloud_cover_all")
+    elif sum(1 for v in cloud_vals if is_num(v)) < 3:
+        quality_flags.append("missing_cloud_cover_partial")
+
+    if not is_num(ice_stability_proxy):
+        quality_flags.append("missing_ice_stability_proxy")
 
     sea_candidates = []
     sea_temps = []
@@ -836,10 +915,22 @@ def fields_for_valid_time(cache, valid_time):
     else:
         quality_flags.append("missing_coast_gate")
 
+    regional_ew_gradient = None
+    regional_pressure_support = None
+    if is_num(west_mean) and is_num(east_mean):
+        regional_ew_gradient = east_mean - west_mean
+        regional_pressure_support = 100.0 * norm(abs(regional_ew_gradient), 0.5, 5.0)
+
     return {
         "icePressure": ice_pressure,
         "iceTempC": ice_temp_c,
         "iceWind": ice_wind,
+        "iceWindDirectionMean": ice_wind_dir_mean,
+        "katabaticDirectionAlignment": katabatic_direction_alignment,
+        "iceStabilityProxy": ice_stability_proxy,
+        "iceMidStabilityProxy": ice_mid_stability_proxy,
+        "cloudCoverMean": cloud_cover_mean,
+        "radiativeCoolingProxy": radiative_cooling_proxy,
         "seaPressureMin": sea_min["pressure"],
         "seaMinSector": sea_min["name"],
         "seaMinLon": sea_min["lon"],
@@ -858,10 +949,14 @@ def fields_for_valid_time(cache, valid_time):
         "gateEast": gate_east,
         "ventilIndex": vent_index,
         "coastGate": coast_gate,
+        "regionalEWGradient": regional_ew_gradient,
+        "regionalPressureSupport": regional_pressure_support,
         "qualityFlags": sorted(set(quality_flags)),
         "usedIcePressurePoints": sum(1 for v in pressure_vals if is_num(v)),
         "usedIceTempPoints": sum(1 for v in temp_vals if is_num(v)),
         "usedIceWindPoints": sum(1 for v in wind_vals if is_num(v)),
+        "usedIceWindDirPoints": sum(1 for v in wind_dir_vals if is_num(v)),
+        "usedIceCloudPoints": sum(1 for v in cloud_vals if is_num(v)),
         "usedSeaPressurePoints": len(sea_candidates),
         "usedSeaTempPoints": len(sea_temps),
     }
@@ -888,6 +983,11 @@ def build_snapshot(snapshot_dt, fields):
         "seaPressure": round(sea_pressure, 1) if is_num(sea_pressure) else None,
         "gradient": round(gradient, 1) if is_num(gradient) else None,
         "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
+        "iceWindDirectionMean": round(fields["iceWindDirectionMean"], 1) if is_num(fields.get("iceWindDirectionMean")) else None,
+        "katabaticDirectionAlignment": round(fields["katabaticDirectionAlignment"], 3) if is_num(fields.get("katabaticDirectionAlignment")) else None,
+        "iceStabilityProxy": round(fields["iceStabilityProxy"], 1) if is_num(fields.get("iceStabilityProxy")) else None,
+        "radiativeCoolingProxy": round(fields["radiativeCoolingProxy"], 3) if is_num(fields.get("radiativeCoolingProxy")) else None,
+        "regionalPressureSupport": round(fields["regionalPressureSupport"], 1) if is_num(fields.get("regionalPressureSupport")) else None,
         "ventilIndex": round(fields["ventilIndex"], 1) if is_num(fields["ventilIndex"]) else None,
         "coastGate": round(fields["coastGate"], 1) if is_num(fields["coastGate"]) else None,
         "seaMinLon": round(fields["seaMinLon"], 3) if is_num(fields["seaMinLon"]) else None,
@@ -1163,7 +1263,20 @@ def sustained_piteraq_metrics(history, now_dt, current_snapshot):
     }
 
 
-def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_now, ice_temp_trend_24h, ice_temp_trend_72h, ice_pressure_anom_now, ice_anom_72_mean):
+def katabatic_loading_metrics(
+    history,
+    now_dt,
+    current_snapshot,
+    dT_coast_ice_now,
+    ice_temp_trend_24h,
+    ice_temp_trend_72h,
+    ice_pressure_anom_now,
+    ice_anom_72_mean,
+    ice_stability_proxy=None,
+    katabatic_direction_alignment=None,
+    radiative_cooling_proxy=None,
+    regional_pressure_support=None,
+):
     recent_rows = recent_piteraq_rows(history, now_dt, hours=24)
     cold_hits = sum(1 for row in recent_rows if is_num(row.get("coldSupportNow")) and row.get("coldSupportNow") >= 34.0)
     deep_cold_hits = sum(1 for row in recent_rows if is_num(row.get("coldSupportNow")) and row.get("coldSupportNow") >= 38.0)
@@ -1173,11 +1286,7 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
     ventil_now = current_snapshot.get("ventilIndex")
 
     cold_now_score = 100.0 * norm(cold_now, 30.0, 46.0)
-    cold_mean_score = 100.0 * norm(current_snapshot.get("coldSupportNow"), 30.0, 46.0)
-    if is_num(ice_anom_72_mean):
-        pressure_memory_score = 100.0 * norm(ice_anom_72_mean, -12.0, 4.0)
-    else:
-        pressure_memory_score = 0.0
+    pressure_memory_score = 100.0 * norm(ice_anom_72_mean, -12.0, 4.0) if is_num(ice_anom_72_mean) else 0.0
     dT_score = 100.0 * norm(dT_coast_ice_now, 28.0, 42.0)
     trend24_score = 100.0 * norm(-ice_temp_trend_24h, 0.0, 6.0) if is_num(ice_temp_trend_24h) else 0.0
     trend72_score = 100.0 * norm(-ice_temp_trend_72h, 0.0, 10.0) if is_num(ice_temp_trend_72h) else 0.0
@@ -1186,28 +1295,48 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
     ventil_support_score = 100.0 * norm(ventil_now, 1.0, 5.0) if is_num(ventil_now) else 0.0
     pressure_now_score = 100.0 * norm(ice_pressure_anom_now, -12.0, 2.0) if is_num(ice_pressure_anom_now) else 0.0
 
+    stability_score = 100.0 * norm(ice_stability_proxy, -5.0, 15.0) if is_num(ice_stability_proxy) else 0.0
+    direction_score = 100.0 * katabatic_direction_alignment if is_num(katabatic_direction_alignment) else 50.0
+    radiation_score = 100.0 * radiative_cooling_proxy if is_num(radiative_cooling_proxy) else 50.0
+    regional_support_score = regional_pressure_support if is_num(regional_pressure_support) else 40.0
+
     score = (
-        0.24 * cold_now_score
-        + 0.14 * pressure_memory_score
-        + 0.14 * dT_score
-        + 0.10 * trend24_score
-        + 0.08 * trend72_score
-        + 0.16 * persistence_score
-        + 0.08 * gate_support_score
-        + 0.06 * ventil_support_score
+        0.18 * cold_now_score
+        + 0.10 * pressure_memory_score
+        + 0.10 * dT_score
+        + 0.08 * trend24_score
+        + 0.06 * trend72_score
+        + 0.14 * persistence_score
+        + 0.06 * gate_support_score
+        + 0.05 * ventil_support_score
+        + 0.05 * pressure_now_score
+        + 0.08 * stability_score
+        + 0.10 * direction_score
+        + 0.08 * radiation_score
+        + 0.02 * regional_support_score
     )
-    if is_num(ice_pressure_anom_now):
-        score += 0.04 * pressure_now_score
 
     if is_num(cold_now):
         if cold_now >= 40.0:
-            score += 12.0
-        elif cold_now >= 38.0:
             score += 10.0
-        elif cold_now >= 36.0:
+        elif cold_now >= 38.0:
             score += 8.0
+        elif cold_now >= 36.0:
+            score += 6.0
         elif cold_now >= 34.0:
-            score += 4.0
+            score += 3.0
+
+    if is_num(radiative_cooling_proxy):
+        if radiative_cooling_proxy >= 0.8:
+            score += 5.0
+        elif radiative_cooling_proxy <= 0.25:
+            score -= 3.0
+
+    if is_num(katabatic_direction_alignment):
+        if katabatic_direction_alignment >= 0.80:
+            score += 6.0
+        elif katabatic_direction_alignment <= 0.35:
+            score -= 4.0
 
     score = clamp(score, 0.0, 100.0)
 
@@ -1217,6 +1346,7 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
         and (
             cold_hits >= 1
             or cold_now >= 35.0
+            or stability_score >= 65.0
         )
     )
     primed = (
@@ -1226,6 +1356,10 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
         and (
             (is_num(coast_gate_now) and coast_gate_now >= 12.0)
             or (is_num(ventil_now) and ventil_now >= 2.0)
+        )
+        and (
+            not is_num(katabatic_direction_alignment)
+            or katabatic_direction_alignment >= 0.55
         )
     )
 
@@ -1242,6 +1376,10 @@ def katabatic_loading_metrics(history, now_dt, current_snapshot, dT_coast_ice_no
         "loading": loading,
         "primed": primed,
         "stage": stage,
+        "stabilityScore": round(stability_score, 1),
+        "directionScore": round(direction_score, 1),
+        "radiationScore": round(radiation_score, 1),
+        "regionalSupportScore": round(regional_support_score, 1),
     }
 
 
@@ -1510,6 +1648,11 @@ def build_payload(now_dt):
     lp_offset_hpa = (sea_pressure - lp_p) if is_num(sea_pressure) and is_num(lp_p) else None
     lp_distance_km = haversine_km(sea_ref_lon, sea_ref_lat, lp_lon, lp_lat)
 
+    ice_stability_proxy = now_fields.get("iceStabilityProxy")
+    katabatic_direction_alignment = now_fields.get("katabaticDirectionAlignment")
+    radiative_cooling_proxy = now_fields.get("radiativeCoolingProxy")
+    regional_pressure_support = now_fields.get("regionalPressureSupport")
+
     if lp_alignment_now == "core":
         quality_flags.append("lp_core_alignment")
     elif lp_alignment_now == "favored":
@@ -1524,19 +1667,30 @@ def build_payload(now_dt):
         + 0.30 * (lp_sector_score_now / 100.0)
     )
 
+    direction_alignment_pct = (
+        100.0 * katabatic_direction_alignment
+        if is_num(katabatic_direction_alignment) else 50.0
+    )
+
     coupling = 100 * (
-        0.29 * (cyclone_score / 100.0)
-        + 0.10 * lp_geom_component * lp_gate
+        0.26 * (cyclone_score / 100.0)
+        + 0.12 * lp_geom_component * lp_gate
         + 0.08 * (sector_score / 100.0)
-        + 0.16 * norm(sea_low_depth, 5, 30)
-        + 0.10 * norm(ice_wind, 4, 20)
-        + 0.15 * norm(vent_now, 4, 16)
-        + 0.10 * norm(coast_gate_now, 8, 30)
+        + 0.14 * norm(sea_low_depth, 5, 30)
+        + 0.08 * norm(ice_wind, 4, 20)
+        + 0.12 * norm(vent_now, 4, 16)
+        + 0.08 * norm(coast_gate_now, 8, 30)
+        + 0.12 * (direction_alignment_pct / 100.0)
     )
     if lp_alignment_now == "core" and lp_gate >= 0.85:
         coupling += 2.0
     elif lp_alignment_now == "favored" and lp_gate >= 0.70:
         coupling += 1.0
+    if (
+        is_num(katabatic_direction_alignment) and katabatic_direction_alignment >= 0.70
+        and lp_alignment_now in {"core", "favored"}
+    ):
+        coupling += 4.0
     coupling = clamp(coupling, 0, 100)
 
     thermal_component = 100 * (
@@ -1597,6 +1751,10 @@ def build_payload(now_dt):
         ice_temp_trend_72h,
         ice_pressure_anom_now,
         ice_anom_72_mean,
+        ice_stability_proxy=ice_stability_proxy,
+        katabatic_direction_alignment=katabatic_direction_alignment,
+        radiative_cooling_proxy=radiative_cooling_proxy,
+        regional_pressure_support=regional_pressure_support,
     )
     katabatic_loading_score = loading["score"]
     katabatic_loading_stage = loading["stage"]
@@ -1755,6 +1913,7 @@ def build_payload(now_dt):
             "sf12": round(sf12, 1) if is_num(sf12) else None,
             "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
             "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
+            "iceWindDirectionMean": round(now_fields["iceWindDirectionMean"], 1) if is_num(now_fields.get("iceWindDirectionMean")) else None,
             "iceWindTrend6h": round(ice_wind_trend_6h, 1) if is_num(ice_wind_trend_6h) else None,
             "coastIceDeltaT": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
             "iceTempTrend24h": round(ice_temp_trend_24h, 1) if is_num(ice_temp_trend_24h) else None,
@@ -1804,6 +1963,13 @@ def build_payload(now_dt):
             "coastGateD6": round(coast_gate_d6, 1) if is_num(coast_gate_d6) else None,
             "coastGateD12": round(coast_gate_d12, 1) if is_num(coast_gate_d12) else None,
             "icePressureAnomNow": round(ice_pressure_anom_now, 1) if is_num(ice_pressure_anom_now) else None,
+            "iceStabilityProxy": round(ice_stability_proxy, 1) if is_num(ice_stability_proxy) else None,
+            "katabaticDirectionAlignment": round(katabatic_direction_alignment, 3) if is_num(katabatic_direction_alignment) else None,
+            "iceWindDirectionMean": round(now_fields["iceWindDirectionMean"], 1) if is_num(now_fields.get("iceWindDirectionMean")) else None,
+            "cloudCoverMean": round(now_fields["cloudCoverMean"], 3) if is_num(now_fields.get("cloudCoverMean")) else None,
+            "radiativeCoolingProxy": round(radiative_cooling_proxy, 3) if is_num(radiative_cooling_proxy) else None,
+            "regionalEWGradient": round(now_fields["regionalEWGradient"], 2) if is_num(now_fields.get("regionalEWGradient")) else None,
+            "regionalPressureSupport": round(regional_pressure_support, 1) if is_num(regional_pressure_support) else None,
             "icePressureAnom72hMean": round(ice_anom_72_mean, 1) if is_num(ice_anom_72_mean) else None,
             "icePressureTrend24h": round(ice_pressure_trend_24h, 1) if is_num(ice_pressure_trend_24h) else None,
             "icePressureTrend72h": round(ice_pressure_trend_72h, 1) if is_num(ice_pressure_trend_72h) else None,
@@ -1838,6 +2004,10 @@ def build_payload(now_dt):
             "sustainedPiteraqStrongHits": sustained_strong_hits,
             "katabaticLoadingScore": int(round(katabatic_loading_score)),
             "katabaticLoadingStage": katabatic_loading_stage,
+            "katabaticStabilityScore": loading.get("stabilityScore"),
+            "katabaticDirectionScore": loading.get("directionScore"),
+            "katabaticRadiationScore": loading.get("radiationScore"),
+            "katabaticRegionalSupportScore": loading.get("regionalSupportScore"),
             "katabaticColdHits24h": katabatic_cold_hits,
             "katabaticDeepColdHits24h": katabatic_deep_cold_hits,
             "katabaticReadinessLevel": loading_level,
@@ -1858,6 +2028,8 @@ def build_payload(now_dt):
             "usedIcePressurePoints": now_fields["usedIcePressurePoints"],
             "usedIceTempPoints": now_fields["usedIceTempPoints"],
             "usedIceWindPoints": now_fields["usedIceWindPoints"],
+            "usedIceWindDirPoints": now_fields["usedIceWindDirPoints"],
+            "usedIceCloudPoints": now_fields["usedIceCloudPoints"],
             "usedSeaPressurePoints": now_fields["usedSeaPressurePoints"],
             "usedSeaTempPoints": now_fields["usedSeaTempPoints"],
         },
@@ -1933,6 +2105,7 @@ def write_stale_payload(error):
             "sf12": None,
             "pressureFallAcceleration": None,
             "iceWind": None,
+            "iceWindDirectionMean": None,
             "iceWindTrend6h": None,
             "coastIceDeltaT": None,
             "iceTempTrend24h": None,
@@ -1982,6 +2155,13 @@ def write_stale_payload(error):
             "coastGateD6": None,
             "coastGateD12": None,
             "icePressureAnomNow": None,
+            "iceStabilityProxy": None,
+            "katabaticDirectionAlignment": None,
+            "iceWindDirectionMean": None,
+            "cloudCoverMean": None,
+            "radiativeCoolingProxy": None,
+            "regionalEWGradient": None,
+            "regionalPressureSupport": None,
             "icePressureAnom72hMean": None,
             "icePressureTrend24h": None,
             "icePressureTrend72h": None,
@@ -2016,6 +2196,10 @@ def write_stale_payload(error):
             "sustainedPiteraqStrongHits": None,
             "katabaticLoadingScore": None,
             "katabaticLoadingStage": None,
+            "katabaticStabilityScore": None,
+            "katabaticDirectionScore": None,
+            "katabaticRadiationScore": None,
+            "katabaticRegionalSupportScore": None,
             "katabaticColdHits24h": None,
             "katabaticDeepColdHits24h": None,
             "lpOffsetHpa": None,
@@ -2033,6 +2217,8 @@ def write_stale_payload(error):
             "usedIcePressurePoints": 0,
             "usedIceTempPoints": 0,
             "usedIceWindPoints": 0,
+            "usedIceWindDirPoints": 0,
+            "usedIceCloudPoints": 0,
             "usedSeaPressurePoints": 0,
             "usedSeaTempPoints": 0,
         },
