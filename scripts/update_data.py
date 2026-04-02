@@ -377,6 +377,119 @@ def lp_geometry_score(bearing, lpd_deg, lpv_toward_deg, approach_speed_deg6h=Non
     return clamp(geom, 0.0, 100.0)
 
 
+def sanitize_phase_text(phase):
+    phase = str(phase or "UNKNOWN").strip()
+    while phase.startswith("STALE (STALE (") and phase.endswith(")"):
+        phase = "STALE (" + phase[len("STALE (STALE ("):]
+    return phase
+
+
+def quality_level(score):
+    if not is_num(score):
+        return "LOW"
+    if score >= 80:
+        return "HIGH"
+    if score >= 55:
+        return "MED"
+    return "LOW"
+
+
+def quality_color(score):
+    if not is_num(score):
+        return "ORG"
+    if score >= 80:
+        return "GRN"
+    if score >= 55:
+        return "YEL"
+    return "ORG"
+
+
+def build_quality_tag(level, prefix):
+    level = str(level or "LOW").upper()
+    return f"{prefix}:{level[:1]}"
+
+
+def annotate_payload_quality(payload):
+    if not isinstance(payload, dict):
+        return payload
+
+    meta = payload.setdefault("meta", {})
+    derived = payload.setdefault("derived", {})
+    output = payload.setdefault("output", {})
+    quality_flags = derived.get("qualityFlags", [])
+    if not isinstance(quality_flags, list):
+        quality_flags = []
+
+    stale = bool(meta.get("stale"))
+    trend = str(derived.get("trendDataStatus") or "")
+
+    ice_p = derived.get("usedIcePressurePoints")
+    ice_t = derived.get("usedIceTempPoints")
+    ice_w = derived.get("usedIceWindPoints")
+    sea_p = derived.get("usedSeaPressurePoints")
+    sea_t = derived.get("usedSeaTempPoints")
+
+    # Load quality = mostly is-data + freshness + trends
+    load_score = 0.0
+    load_score += 28.0 * norm(ice_p, 0.0, 3.0)
+    load_score += 18.0 * norm(ice_t, 0.0, 3.0)
+    load_score += 18.0 * norm(ice_w, 0.0, 3.0)
+    load_score += 8.0 * norm(derived.get("usedIceWindDirPoints"), 0.0, 3.0)
+    load_score += 10.0 * (1.0 if trend == "ok" else 0.55 if "partial" in trend else 0.25)
+    load_score += 10.0 * (0.0 if stale else 1.0)
+    load_score += 8.0 * (0.0 if "missing_now_fields" in quality_flags else 1.0)
+    if "missing_ice_temperature_all" in quality_flags or "missing_ice_wind_all" in quality_flags:
+        load_score -= 20.0
+    if "missing_ice_temperature_partial" in quality_flags:
+        load_score -= 8.0
+    if "missing_ice_wind_partial" in quality_flags:
+        load_score -= 8.0
+    if "partial_point_fetch_errors" in quality_flags:
+        load_score -= 5.0
+    load_score = clamp(load_score, 0.0, 100.0)
+
+    # Hazard quality = broader field support + geometry + freshness
+    hazard_score = 0.0
+    hazard_score += 18.0 * norm(ice_p, 0.0, 3.0)
+    hazard_score += 10.0 * norm(ice_t, 0.0, 3.0)
+    hazard_score += 12.0 * norm(ice_w, 0.0, 3.0)
+    hazard_score += 20.0 * norm(sea_p, 0.0, 8.0)
+    hazard_score += 10.0 * norm(sea_t, 0.0, 10.0)
+    hazard_score += 10.0 * (1.0 if trend == "ok" else 0.6 if "partial" in trend else 0.25)
+    hazard_score += 10.0 * (0.0 if stale else 1.0)
+    hazard_score += 10.0 * (0.0 if "missing_now_fields" in quality_flags else 1.0)
+    if "partial_point_fetch_errors" in quality_flags:
+        hazard_score -= 8.0
+    if "missing_sea_temperature_partial" in quality_flags:
+        hazard_score -= 4.0
+    if "missing_gate_mid" in quality_flags or "missing_gate_east" in quality_flags or "missing_coast_gate" in quality_flags:
+        hazard_score -= 6.0
+    hazard_score = clamp(hazard_score, 0.0, 100.0)
+
+    load_level = quality_level(load_score)
+    hazard_level = quality_level(hazard_score)
+    data_status = "STALE" if stale else "FRESH"
+
+    derived["loadQualityScore"] = int(round(load_score))
+    derived["loadQualityLevel"] = load_level
+    derived["loadQualityColor"] = quality_color(load_score)
+    derived["hazardQualityScore"] = int(round(hazard_score))
+    derived["hazardQualityLevel"] = hazard_level
+    derived["hazardQualityColor"] = quality_color(hazard_score)
+    derived["dataStatusLabel"] = data_status
+
+    base_msg = output.get("message")
+    if isinstance(base_msg, str) and base_msg.strip():
+        base_main = base_msg.split(" LQ:")[0].split(" HQ:")[0].split(" D:")[0].strip()
+        output["message"] = f"{base_main} {build_quality_tag(load_level, 'LQ')} {build_quality_tag(hazard_level, 'HQ')} D:{data_status}"
+
+    output["phase"] = sanitize_phase_text(output.get("phase"))
+    payload["derived"] = derived
+    payload["output"] = output
+    payload["meta"] = meta
+    return annotate_payload_quality(payload)
+
+
 def write_summary_file(payload):
     meta = payload.get("meta", {})
     scores = payload.get("scores", {})
@@ -428,6 +541,11 @@ def write_summary_file(payload):
         "katabaticReadinessLevel": derived.get("katabaticReadinessLevel"),
         "katabaticReadinessColor": derived.get("katabaticReadinessColor"),
         "piteraqHazardLevel": derived.get("piteraqHazardLevel"),
+        "loadQualityScore": derived.get("loadQualityScore"),
+        "loadQualityLevel": derived.get("loadQualityLevel"),
+        "hazardQualityScore": derived.get("hazardQualityScore"),
+        "hazardQualityLevel": derived.get("hazardQualityLevel"),
+        "dataStatusLabel": derived.get("dataStatusLabel"),
     }
 
     save_json(SUMMARY_FILE, summary)
@@ -1548,7 +1666,7 @@ def build_payload(now_dt):
             prev["meta"] = prev_meta
             prev["derived"] = prev_derived
             prev["output"] = prev_output
-            return prev
+            return annotate_payload_quality(prev)
 
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
@@ -2249,6 +2367,7 @@ def write_stale_payload(error):
         if not phase0.startswith("STALE ("):
             existing_output["phase"] = f"STALE ({phase0})"
         existing["output"] = existing_output
+        annotate_payload_quality(existing)
 
         save_json(DATA_FILE, existing)
         write_summary_file(existing)
@@ -2402,6 +2521,7 @@ def write_stale_payload(error):
             "message": f"{LOCATION_NAME} ERROR DMI {err_name}",
         },
     }
+    annotate_payload_quality(fallback)
     save_json(DATA_FILE, fallback)
     write_summary_file(fallback)
     print(f"No prior good dataset; wrote fallback due to {err_name}")
@@ -2409,7 +2529,7 @@ def write_stale_payload(error):
 
 if __name__ == "__main__":
     try:
-        payload = build_payload(now_utc())
+        payload = annotate_payload_quality(build_payload(now_utc()))
         save_json(DATA_FILE, payload)
         write_summary_file(payload)
         print("Updated data.json/history.json/summary.json successfully")
