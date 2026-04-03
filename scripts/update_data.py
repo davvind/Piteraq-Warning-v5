@@ -1635,7 +1635,14 @@ def build_payload(now_dt):
     instance_ids = list_instances()
     latest = instance_ids[-1]
     prev_instance = instance_ids[-2] if len(instance_ids) >= 2 else None
+    extra_now_instance = instance_ids[-3] if len(instance_ids) >= 3 else None
     candidate_instance_ids = [latest] + ([prev_instance] if prev_instance else [])
+
+    # One extra controlled fallback for now-fields: prefer a slightly older
+    # instance over falling straight back to very old cached data.
+    if extra_now_instance and extra_now_instance not in candidate_instance_ids:
+        candidate_instance_ids.append(extra_now_instance)
+
     older_instance_ids = [iid for iid in instance_ids[:-1][-BACKFILL_MAX_INSTANCES:] if iid not in candidate_instance_ids]
 
     chosen_instance = None
@@ -1646,7 +1653,9 @@ def build_payload(now_dt):
     diff_now = None
     now_fields = None
 
-    for iid in candidate_instance_ids:
+    for idx, iid in enumerate(candidate_instance_ids):
+        if idx >= 2:
+            print(f"Trying extra now fallback instance {iid}")
         trial_cache = build_empty_cache()
         trial_errors = append_instance_to_cache(trial_cache, iid)
         trial_valid_now, trial_dt_now, trial_diff_now, trial_now_fields = find_best_valid_time_with_fields(
