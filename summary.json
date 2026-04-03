@@ -1,17 +1,17 @@
 {
-  "updatedAt": "2026-04-03 14:10 UTC",
+  "updatedAt": "2026-04-03 16:05 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
   "instanceId": "2026-04-02T120000Z",
   "lastSuccessfulUpdate": "2026-04-02 16:14 UTC",
-  "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
+  "forecastInfo": "Latest update failed: HTTPError",
   "stale": true,
   "level": "GRN",
   "phase": "STALE (PITERAQ LOW)",
   "risk": 4,
   "watch": false,
   "message": "GRN4 LOADLOW PITGRN H24-48T RES10 TRG4 CPL52 GR4.3 LPV-14E LPD0 VG-2 CG2 LQ:L HQ:L DQ:STALE AC:L",
-  "trendDataStatus": "stale: missing_now_fields",
+  "trendDataStatus": "stale: HTTPError",
   "trendGapHours6": null,
   "trendGapHours12": null,
   "qualityFlags": [
@@ -64,6 +64,6 @@
   "dataQualityLabel": "STALE",
   "alertConfidence": "low",
   "alertConfidenceLabel": "LOW",
-  "lastSuccessfulUpdateAgeHours": 21.93,
+  "lastSuccessfulUpdateAgeHours": 23.85,
   "usedFallbackNowInstance": null
 }

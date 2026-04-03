@@ -1,17 +1,17 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-04-03 14:10 UTC",
+    "updatedAt": "2026-04-03 16:05 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
+    "forecastInfo": "Latest update failed: HTTPError",
     "instanceId": "2026-04-02T120000Z",
     "lastSuccessfulUpdate": "2026-04-02 16:14 UTC",
-    "lastAttemptFailed": "missing_now_fields",
+    "lastAttemptFailed": "HTTPError",
     "stale": true,
     "dataQuality": "stale",
     "alertConfidence": "low",
-    "lastSuccessfulUpdateAgeHours": 21.93
+    "lastSuccessfulUpdateAgeHours": 23.85
   },
   "inputs": {
     "icePressure": 992.6,
@@ -59,7 +59,7 @@
         "ice:mouth": "HTTPError: 502 Server Error: Bad Gateway for url: https://opendataapi.dmi.dk/v1/forecastedr/collections/harmonie_ig_sf/instances/2026-04-02T120000Z/position?coords=POINT%28-40.3+68.2%29&parameter-name=pressure-sealevel%2Ctemperature-2m%2Cwind-speed-100m&crs=crs84&f=CoverageJSON",
         "sea:W1": "HTTPError: 502 Server Error: Bad Gateway for url: https://opendataapi.dmi.dk/v1/forecastedr/collections/harmonie_ig_sf/instances/2026-04-02T120000Z/position?coords=POINT%28-34.9+62.8%29&parameter-name=pressure-sealevel%2Ctemperature-2m&crs=crs84&f=CoverageJSON",
         "sea:W2": "HTTPError: 502 Server Error: Bad Gateway for url: https://opendataapi.dmi.dk/v1/forecastedr/collections/harmonie_ig_sf/instances/2026-04-02T120000Z/position?coords=POINT%28-33.7+63.8%29&parameter-name=pressure-sealevel%2Ctemperature-2m&crs=crs84&f=CoverageJSON",
-        "sea:C2": "TypeError: exceptions must derive from BaseException",
+        "sea:C2": "LegacyNonExceptionRaise: older code attempted to raise a non-Exception object",
         "sea:M3": "ReadTimeout: HTTPSConnectionPool(host='opendataapi.dmi.dk', port=443): Read timed out. (read timeout=40)"
       }
     },
@@ -126,7 +126,7 @@
     "lpOffsetHpa": -0.8,
     "lpDistanceKm": 35.9,
     "accUncertain": false,
-    "trendDataStatus": "stale: missing_now_fields",
+    "trendDataStatus": "stale: HTTPError",
     "qualityFlags": [
       "lp_favored_alignment",
       "lp_near_favored_sector",
@@ -165,7 +165,7 @@
     "dataQualityLabel": "STALE",
     "alertConfidence": "low",
     "alertConfidenceLabel": "LOW",
-    "lastSuccessfulUpdateAgeHours": 21.93,
+    "lastSuccessfulUpdateAgeHours": 23.85,
     "usedFallbackNowInstance": null,
     "nowDataAvailable": false
   },
