@@ -866,10 +866,10 @@ def fetch_probe_position(instance_id, lon, lat, parameter_names):
     return r.json()
 
 
-def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
-    """Strict probe: allow extra fallback full fetch only when both an ice point and a sea point expose near-now numeric fields."""
+def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS, phase_label="now probe"):
+    """Strict probe: allow full fetch only when both an ice point and a sea point expose near-now numeric fields."""
     if _global_rate_limit_hits > 0:
-        print(f"Skipping extra now probe for {instance_id}: rate limiting already observed")
+        print(f"Skipping {phase_label} for {instance_id}: rate limiting already observed")
         return False
 
     probe_specs = [
@@ -882,12 +882,12 @@ def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANC
         try:
             data = fetch_probe_position(instance_id, point["lon"], point["lat"], params)
             if not isinstance(data, dict):
-                print(f"Extra now probe for {instance_id} returned no data at {label}:{point['name']}")
+                print(f"{phase_label.capitalize()} for {instance_id} returned no data at {label}:{point['name']}")
                 return False
 
             times, values = parse_coverage_series(data, params)
             if not times:
-                print(f"Extra now probe for {instance_id} found no valid times at {label}:{point['name']}")
+                print(f"{phase_label.capitalize()} for {instance_id} found no valid times at {label}:{point['name']}")
                 return False
 
             probe_axis = []
@@ -899,20 +899,20 @@ def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANC
 
             valid_time, _, diff_h = find_valid_time(probe_axis, target_dt, tolerance_hours=tolerance_hours)
             if valid_time is None:
-                print(f"Extra now probe for {instance_id} found no near-now timestep at {label}:{point['name']}")
+                print(f"{phase_label.capitalize()} for {instance_id} found no near-now timestep at {label}:{point['name']}")
                 return False
 
             idx = times.index(valid_time)
             numeric_count = sum(1 for param in params if is_num(safe_get(values.get(param, []), idx)))
             min_required = 2 if label == "ice" else 1
             if numeric_count < min_required:
-                print(f"Extra now probe for {instance_id} found too few numeric values at {label}:{point['name']} ({numeric_count})")
+                print(f"{phase_label.capitalize()} for {instance_id} found too few numeric values at {label}:{point['name']} ({numeric_count})")
                 return False
 
-            print(f"Extra now probe ok for {instance_id} at {label}:{point['name']} ({valid_time}, diff {diff_h:.2f}h)")
+            print(f"{phase_label.capitalize()} ok for {instance_id} at {label}:{point['name']} ({valid_time}, diff {diff_h:.2f}h)")
             successes += 1
         except Exception as e:
-            print(f"Extra now probe failed for {instance_id} at {label}:{point['name']}: {type(e).__name__}: {e}")
+            print(f"{phase_label.capitalize()} failed for {instance_id} at {label}:{point['name']}: {type(e).__name__}: {e}")
             return False
 
     return successes == len(probe_specs)
@@ -1880,13 +1880,27 @@ def build_payload(now_dt):
     diff_now = None
     now_fields = None
 
-    selected_primary = choose_reachable_instance(primary_now_candidates, label="primary now candidate")
-    if selected_primary is None and older_instance_ids:
-        print("Latest/primary candidates unavailable, trying older instances as now source")
-        selected_primary = choose_reachable_instance(list(reversed(older_instance_ids[-3:])), label="older now fallback")
+    ordered_primary_candidates = []
+    seen_primary = set()
+    for iid in primary_now_candidates:
+        if iid and iid not in seen_primary:
+            ordered_primary_candidates.append((iid, "primary now candidate"))
+            seen_primary.add(iid)
 
-    primary_fetch_candidates = [selected_primary] if selected_primary else []
-    for iid in primary_fetch_candidates:
+    if older_instance_ids:
+        for iid in reversed(older_instance_ids[-3:]):
+            if iid and iid not in seen_primary:
+                ordered_primary_candidates.append((iid, "older now fallback"))
+                seen_primary.add(iid)
+
+    for iid, label in ordered_primary_candidates:
+        if not instance_is_reachable(iid):
+            print(f"Skipping {label} {iid}: instance health check failed")
+            continue
+        if not instance_has_now_probe(iid, now_dt, tolerance_hours=TIME_TOLERANCE_HOURS, phase_label=label):
+            print(f"Skipping {label} {iid}: strict now-field probe failed")
+            continue
+
         trial_cache = build_empty_cache()
         trial_errors = append_instance_to_cache(trial_cache, iid)
         trial_valid_now, trial_dt_now, trial_diff_now, trial_now_fields = find_best_valid_time_with_fields(
@@ -1901,6 +1915,7 @@ def build_payload(now_dt):
             diff_now = trial_diff_now
             now_fields = trial_now_fields
             break
+        print(f"Skipping {label} {iid}: full fetch still lacked now-fields")
 
     if valid_now is None and extra_now_instance:
         print(f"Trying extra now fallback instance {extra_now_instance}")
@@ -1910,7 +1925,7 @@ def build_payload(now_dt):
         )
         selected_extra = choose_reachable_instance([extra_now_instance], label="extra now fallback")
         if selected_extra:
-            if instance_has_now_probe(selected_extra, now_dt, tolerance_hours=9.0):
+            if instance_has_now_probe(selected_extra, now_dt, tolerance_hours=9.0, phase_label="extra now fallback"):
                 trial_cache = build_empty_cache()
                 trial_errors = append_instance_to_cache(trial_cache, selected_extra, request_retries=BACKFILL_REQUEST_RETRIES)
                 trial_valid_now, trial_dt_now, trial_diff_now, trial_now_fields = find_best_valid_time_with_fields(
