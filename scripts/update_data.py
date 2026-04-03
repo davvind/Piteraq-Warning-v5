@@ -77,16 +77,16 @@ ICE_PARAMS_CORE = [
     "temperature-2m",
     "wind-speed-100m",
     "wind-direction-100m",
+    "total-cloud-cover",
 ]
-ICE_PARAMS_EXTRA = ["total-cloud-cover"]
 ICE_PARAMS = ICE_PARAMS_CORE
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
+# Optional extra-path retained for future experiments, but not used in build_payload
+ICE_PARAMS_EXTRA = ["total-cloud-cover"]
 EXTRA_REQUEST_SLEEP = 0.6
 EXTRA_REQUEST_RETRIES = 1
-
-
-ENABLE_BONUS_FETCH = os.getenv("PITERAQ_ENABLE_BONUS", "1") == "1"
+ENABLE_BONUS_FETCH = False
 
 # DMI hygiene controls
 MAX_REQUESTS_PER_RUN = int(os.getenv("PITERAQ_MAX_REQUESTS", "45"))
@@ -416,6 +416,53 @@ def sanitize_phase_text(phase):
     return phase
 
 
+def error_to_text(error):
+    if isinstance(error, BaseException):
+        msg = str(error).strip()
+        return f"{type(error).__name__}: {msg}" if msg else type(error).__name__
+    if error is None:
+        return "UnknownError"
+    return f"NonExceptionError: {type(error).__name__}: {error}"
+
+
+def sanitize_fetch_errors(fetch_errors):
+    if not isinstance(fetch_errors, dict):
+        return {}
+
+    cleaned = {}
+    for key, value in fetch_errors.items():
+        key_txt = str(key)
+        if isinstance(value, dict):
+            nested = sanitize_fetch_errors(value)
+            if nested:
+                cleaned[key_txt] = nested
+            continue
+
+        txt = value if isinstance(value, str) else error_to_text(value)
+        if "exceptions must derive from BaseException" in txt:
+            txt = "LegacyNonExceptionRaise: older code attempted to raise a non-Exception object"
+        cleaned[key_txt] = txt
+
+    return cleaned
+
+
+def snapshot_gap_hours(current_snapshot, reference_snapshot):
+    if not isinstance(current_snapshot, dict) or not isinstance(reference_snapshot, dict):
+        return None
+    try:
+        now_dt = parse_iso(current_snapshot["t"])
+        ref_dt = parse_iso(reference_snapshot["t"])
+    except Exception:
+        return None
+    return abs((now_dt - ref_dt).total_seconds()) / 3600.0
+
+
+def trend_gap_within_expected(gap_hours, expected_hours, allowed_slip_hours):
+    if not is_num(gap_hours):
+        return False
+    return abs(gap_hours - expected_hours) <= allowed_slip_hours
+
+
 def quality_level(score):
     if not is_num(score):
         return "LOW"
@@ -478,6 +525,10 @@ def annotate_payload_quality(payload):
         load_score -= 8.0
     if "partial_point_fetch_errors" in quality_flags:
         load_score -= 5.0
+    if "trend_gap_too_large" in quality_flags:
+        load_score -= 10.0
+    if "trend_gap12_too_large" in quality_flags:
+        load_score -= 8.0
     load_score = clamp(load_score, 0.0, 100.0)
 
     # Hazard quality = broader field support + geometry + freshness
@@ -496,6 +547,10 @@ def annotate_payload_quality(payload):
         hazard_score -= 4.0
     if "missing_gate_mid" in quality_flags or "missing_gate_east" in quality_flags or "missing_coast_gate" in quality_flags:
         hazard_score -= 6.0
+    if "trend_gap_too_large" in quality_flags:
+        hazard_score -= 12.0
+    if "trend_gap12_too_large" in quality_flags:
+        hazard_score -= 10.0
     hazard_score = clamp(hazard_score, 0.0, 100.0)
 
     load_level = quality_level(load_score)
@@ -543,6 +598,8 @@ def write_summary_file(payload):
         "watch": derived.get("watch", False),
         "message": output.get("message"),
         "trendDataStatus": derived.get("trendDataStatus"),
+        "trendGapHours6": derived.get("trendGapHours6"),
+        "trendGapHours12": derived.get("trendGapHours12"),
         "qualityFlags": derived.get("qualityFlags", []),
         "reservoir": scores.get("reservoir"),
         "trigger": scores.get("trigger"),
@@ -789,10 +846,13 @@ def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_
         for future in as_completed(futures):
             name = futures[future]
             try:
-                results[name] = future.result()
+                result = future.result()
+                if result is not None and not isinstance(result, dict):
+                    raise RuntimeError(f"Unexpected fetch result type: {type(result).__name__}")
+                results[name] = result
             except Exception as e:
                 results[name] = None
-                errors[name] = f"{type(e).__name__}: {e}"
+                errors[name] = error_to_text(e)
 
     return results, errors
 
@@ -818,39 +878,45 @@ def append_instance_to_cache(cache, iid, sea_points=None, coast_points=None, req
         data = ice_results.get(p["name"])
         if not isinstance(data, dict):
             continue
-        times, values = parse_coverage_series(data, ICE_PARAMS)
-        rows = cache["ice"][p["name"]]["rows"]
+        try:
+            times, values = parse_coverage_series(data, ICE_PARAMS)
+            rows = cache["ice"][p["name"]]["rows"]
 
-        for i, t in enumerate(times):
-            rows.append(
-                {
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-                    "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
-                    "wind-direction-100m": safe_get(values.get("wind-direction-100m", []), i),
-                }
-            )
+            for i, t in enumerate(times):
+                rows.append(
+                    {
+                        "instanceId": iid,
+                        "validTime": t,
+                        "dt": parse_iso(t),
+                        "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                        "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                        "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
+                        "wind-direction-100m": safe_get(values.get("wind-direction-100m", []), i),
+                    }
+                )
+        except Exception as e:
+            all_errors[f"ice:{p['name']}"] = error_to_text(e)
 
     for p in sea_points + coast_points:
         data = sea_results.get(p["name"])
         if not isinstance(data, dict):
             continue
-        times, values = parse_coverage_series(data, SEA_PARAMS)
-        rows = cache["sea"][p["name"]]["rows"]
+        try:
+            times, values = parse_coverage_series(data, SEA_PARAMS)
+            rows = cache["sea"][p["name"]]["rows"]
 
-        for i, t in enumerate(times):
-            rows.append(
-                {
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-                }
-            )
+            for i, t in enumerate(times):
+                rows.append(
+                    {
+                        "instanceId": iid,
+                        "validTime": t,
+                        "dt": parse_iso(t),
+                        "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                        "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                    }
+                )
+        except Exception as e:
+            all_errors[f"sea:{p['name']}"] = error_to_text(e)
 
     for block_type in ["ice", "sea"]:
         for block in cache[block_type].values():
@@ -1082,7 +1148,7 @@ def fields_for_valid_time(cache, valid_time):
         t = row.get("temperature-2m")
         w = row.get("wind-speed-100m")
         wd = row.get("wind-direction-100m")
-        cc = None
+        cc = row.get("total-cloud-cover")
 
         pressure_vals.append((p / 100.0) if is_num(p) else None)
         temp_vals.append(kelvin_to_celsius(t) if is_num(t) else None)
@@ -1120,8 +1186,12 @@ def fields_for_valid_time(cache, valid_time):
         else None
     )
 
-    cloud_cover_mean = None
-    radiative_cooling_proxy = None
+    cloud_cover_mean = avg(cloud_vals)
+    radiative_cooling_proxy = (
+        clamp(1.0 - cloud_cover_mean, 0.0, 1.0)
+        if is_num(cloud_cover_mean)
+        else None
+    )
 
     if not is_num(ice_temp_c):
         quality_flags.append("missing_ice_temperature_all")
@@ -1140,7 +1210,10 @@ def fields_for_valid_time(cache, valid_time):
     elif sum(1 for v in wind_dir_vals if is_num(v)) < 3:
         quality_flags.append("missing_ice_wind_direction_partial")
 
-    # cloud cover deaktivert midlertidig for å redusere DMI-belastning
+    if sum(1 for v in cloud_vals if is_num(v)) == 0:
+        quality_flags.append("missing_cloud_cover_all")
+    elif sum(1 for v in cloud_vals if is_num(v)) < 3:
+        quality_flags.append("missing_cloud_cover_partial")
 
     if not is_num(ice_stability_proxy):
         quality_flags.append("missing_ice_stability_proxy")
@@ -1226,7 +1299,7 @@ def fields_for_valid_time(cache, valid_time):
     regional_pressure_support = None
     if is_num(west_mean) and is_num(east_mean):
         regional_ew_gradient = east_mean - west_mean
-        regional_pressure_support = 100.0 * norm(abs(regional_ew_gradient), 0.5, 5.0)
+        regional_pressure_support = 100.0 * norm(-regional_ew_gradient, -5.0, 5.0)
 
     return {
         "icePressure": ice_pressure,
@@ -1263,7 +1336,7 @@ def fields_for_valid_time(cache, valid_time):
         "usedIceTempPoints": sum(1 for v in temp_vals if is_num(v)),
         "usedIceWindPoints": sum(1 for v in wind_vals if is_num(v)),
         "usedIceWindDirPoints": sum(1 for v in wind_dir_vals if is_num(v)),
-        "usedIceCloudPoints": 0,
+        "usedIceCloudPoints": sum(1 for v in cloud_vals if is_num(v)),
         "usedSeaPressurePoints": len(sea_candidates),
         "usedSeaTempPoints": len(sea_temps),
     }
@@ -1800,24 +1873,6 @@ def build_payload(now_dt):
 
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
-    extra_errors = {}
-    cloud_bonus = (
-        fetch_cloud_cover_bonus(chosen_instance, valid_now)
-        if ENABLE_BONUS_FETCH and _global_rate_limit_hits == 0 and chosen_instance and valid_now
-        else None
-    )
-    if isinstance(cloud_bonus, dict):
-        now_fields["cloudCoverMean"] = cloud_bonus.get("cloudCoverMean")
-        now_fields["radiativeCoolingProxy"] = cloud_bonus.get("radiativeCoolingProxy")
-        now_fields["usedIceCloudPoints"] = cloud_bonus.get("usedIceCloudPoints", 0)
-        extra_errors = cloud_bonus.get("errors", {}) or {}
-        if now_fields["usedIceCloudPoints"] == 0:
-            now_fields.setdefault("qualityFlags", [])
-            now_fields["qualityFlags"] = sorted(set(now_fields["qualityFlags"] + ["missing_cloud_cover_bonus"]))
-        elif now_fields["usedIceCloudPoints"] < len(ICE_POINTS):
-            now_fields.setdefault("qualityFlags", [])
-            now_fields["qualityFlags"] = sorted(set(now_fields["qualityFlags"] + ["missing_cloud_cover_bonus_partial"]))
-
     current_snapshot = build_snapshot(dt_now, now_fields)
     history.append(current_snapshot)
     history = sort_and_dedup_history(history)
@@ -1834,8 +1889,6 @@ def build_payload(now_dt):
     merged_now_errors = {}
     if fetch_errors_now:
         merged_now_errors.update(fetch_errors_now)
-    if extra_errors:
-        merged_now_errors.update(extra_errors)
     if merged_now_errors:
         fetch_errors[chosen_instance or latest] = merged_now_errors
     fetch_errors.update(fetch_errors_backfill)
@@ -1857,6 +1910,21 @@ def build_payload(now_dt):
         required_keys=["iceTempC", "icePressure"]
     )
 
+    quality_flags = sorted(set(now_fields.get("qualityFlags", [])))
+    if fetch_errors:
+        quality_flags.append("partial_point_fetch_errors")
+
+    trend_gap_hours_6 = snapshot_gap_hours(current_snapshot, snap_6)
+    trend_gap_hours_12 = snapshot_gap_hours(current_snapshot, snap_12)
+
+    if snap_6 and is_num(trend_gap_hours_6) and not trend_gap_within_expected(trend_gap_hours_6, 6.0, 2.5):
+        quality_flags.append("trend_gap_too_large")
+        snap_6 = None
+
+    if snap_12 and is_num(trend_gap_hours_12) and not trend_gap_within_expected(trend_gap_hours_12, 12.0, 3.5):
+        quality_flags.append("trend_gap12_too_large")
+        snap_12 = None
+
     count = sum(1 for x in [current_snapshot, snap_6, snap_12] if x is not None)
     if count == 3:
         trend_status = "ok"
@@ -1864,10 +1932,6 @@ def build_payload(now_dt):
         trend_status = "partial"
     else:
         trend_status = "insufficient_distinct_steps"
-
-    quality_flags = sorted(set(now_fields.get("qualityFlags", [])))
-    if fetch_errors:
-        quality_flags.append("partial_point_fetch_errors")
 
     ice_pressure = current_snapshot["icePressure"]
     ice_temp_c = current_snapshot["iceTempC"]
@@ -2361,7 +2425,7 @@ def build_payload(now_dt):
             "cycloneScore": int(round(cyclone_score)),
             "piteraqMismatch": piteraq_mismatch,
             "usedInstanceIds": [chosen_instance] if chosen_instance else [],
-            "fetchErrors": fetch_errors,
+            "fetchErrors": sanitize_fetch_errors(fetch_errors),
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
             "seaMinLat": round(now_fields["seaMinLat"], 3) if is_num(now_fields["seaMinLat"]) else None,
             "seaCentroidPressure": round(now_fields["seaCentroidPressure"], 1) if is_num(now_fields["seaCentroidPressure"]) else None,
@@ -2437,6 +2501,8 @@ def build_payload(now_dt):
             "lpDistanceKm": round(lp_distance_km, 1) if is_num(lp_distance_km) else None,
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
+            "trendGapHours6": round(trend_gap_hours_6, 2) if is_num(trend_gap_hours_6) else None,
+            "trendGapHours12": round(trend_gap_hours_12, 2) if is_num(trend_gap_hours_12) else None,
             "qualityFlags": sorted(set(quality_flags)),
             "selectedTimes": {
                 "now": {"validTime": valid_now, "diffHours": round(diff_now, 2)} if valid_now else None,
@@ -2488,6 +2554,7 @@ def write_stale_payload(error):
 
         derived["trendDataStatus"] = f"stale: {err_name}"
         derived["qualityFlags"] = quality_flags
+        derived["fetchErrors"] = sanitize_fetch_errors(derived.get("fetchErrors", {}))
 
         existing["meta"] = meta
         existing["derived"] = derived
@@ -2631,6 +2698,8 @@ def write_stale_payload(error):
             "lpDistanceKm": None,
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
+            "trendGapHours6": None,
+            "trendGapHours12": None,
             "qualityFlags": ["hard_failure"],
             "selectedTimes": {
                 "now": None,
