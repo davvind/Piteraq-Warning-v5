@@ -95,8 +95,8 @@ FALLBACK_MAX_REQUESTS_PER_RUN = int(os.getenv("PITERAQ_FALLBACK_MAX_REQUESTS", "
 FALLBACK_MAX_RATE_LIMIT_HITS = int(os.getenv("PITERAQ_FALLBACK_MAX_429", "1"))
 BACKFILL_MAX_INSTANCES = 2
 BACKFILL_REQUEST_RETRIES = 1
-INSTANCE_CHECK_CONNECT_TIMEOUT = float(os.getenv("PITERAQ_INSTANCE_CHECK_CONNECT_TIMEOUT", "6"))
-INSTANCE_CHECK_READ_TIMEOUT = float(os.getenv("PITERAQ_INSTANCE_CHECK_READ_TIMEOUT", "15"))
+INSTANCE_CHECK_CONNECT_TIMEOUT = float(os.getenv("PITERAQ_INSTANCE_CHECK_CONNECT_TIMEOUT", "5"))
+INSTANCE_CHECK_READ_TIMEOUT = float(os.getenv("PITERAQ_INSTANCE_CHECK_READ_TIMEOUT", "8"))
 
 SEA_POINTS_BACKFILL = [
     {"name": "W3", "lon": -32.5, "lat": 64.8},
@@ -1357,6 +1357,11 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
     older_instance_ids = list(older_instance_ids)[-BACKFILL_MAX_INSTANCES:]
 
     for iid in reversed(older_instance_ids):
+        if not instance_is_reachable(iid):
+            print(f"Skipping {iid}: health check failed")
+            fetch_errors[iid] = {"instance": "health_check_failed"}
+            continue
+
         errs = append_instance_to_cache(
             cache,
             iid,
