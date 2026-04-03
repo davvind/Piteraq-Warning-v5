@@ -832,6 +832,47 @@ def choose_reachable_instance(candidates, label="instance"):
 
     return None
 
+def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
+    """Cheap probe to avoid a full extra-fallback fetch when now-fields are clearly unavailable."""
+    probe_specs = [
+        ("ice", ICE_POINTS[0], ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]),
+        ("sea", SEA_POINTS_BACKFILL[1], ["pressure-sealevel"]),
+    ]
+
+    valid_times = []
+    for label, point, params in probe_specs:
+        try:
+            data = fetch_position(instance_id, point["lon"], point["lat"], params, retries=BACKFILL_REQUEST_RETRIES)
+            if not isinstance(data, dict):
+                print(f"Extra now probe for {instance_id} returned no data at {label}:{point['name']}")
+                return False
+            times, values = parse_coverage_series(data, params)
+            if not times:
+                print(f"Extra now probe for {instance_id} found no valid times at {label}:{point['name']}")
+                return False
+            probe_axis = []
+            for t in times:
+                try:
+                    probe_axis.append({"validTime": t, "dt": parse_iso(t)})
+                except Exception:
+                    continue
+            valid_time, _, diff_h = find_valid_time(probe_axis, target_dt, tolerance_hours=tolerance_hours)
+            if valid_time is None:
+                print(f"Extra now probe for {instance_id} found no near-now timestep at {label}:{point['name']}")
+                return False
+
+            # Require at least one numeric value among requested parameters at the chosen time.
+            idx = times.index(valid_time)
+            if not any(is_num(safe_get(values.get(param, []), idx)) for param in params):
+                print(f"Extra now probe for {instance_id} found no numeric values at {label}:{point['name']}")
+                return False
+            valid_times.append((label, point["name"], valid_time, diff_h))
+        except Exception as e:
+            print(f"Extra now probe failed for {instance_id} at {label}:{point['name']}: {type(e).__name__}")
+            return False
+
+    return bool(valid_times)
+
 
 def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_WORKERS, retries=REQUEST_RETRIES):
     results = {}
@@ -1824,7 +1865,7 @@ def build_payload(now_dt):
             max_rate_limit_hits=FALLBACK_MAX_RATE_LIMIT_HITS,
         )
         selected_extra = choose_reachable_instance([extra_now_instance], label="extra now fallback")
-        if selected_extra:
+        if selected_extra and instance_has_now_probe(selected_extra, now_dt, tolerance_hours=9.0):
             trial_cache = build_empty_cache()
             trial_errors = append_instance_to_cache(trial_cache, selected_extra, request_retries=BACKFILL_REQUEST_RETRIES)
             trial_valid_now, trial_dt_now, trial_diff_now, trial_now_fields = find_best_valid_time_with_fields(
@@ -1838,6 +1879,8 @@ def build_payload(now_dt):
                 dt_now = trial_dt_now
                 diff_now = trial_diff_now
                 now_fields = trial_now_fields
+        elif selected_extra:
+            print(f"Skipping extra now fallback {selected_extra}: now-field probe failed")
 
     if valid_now is None or now_fields is None:
         prev = load_json(DATA_FILE, {})
