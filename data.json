@@ -1,14 +1,17 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-04-03 12:34 UTC",
+    "updatedAt": "2026-04-03 13:24 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
     "instanceId": "2026-04-02T120000Z",
     "lastSuccessfulUpdate": "2026-04-02 16:14 UTC",
     "lastAttemptFailed": "missing_now_fields",
-    "stale": true
+    "stale": true,
+    "dataQuality": "stale",
+    "alertConfidence": "low",
+    "lastSuccessfulUpdateAgeHours": 21.17
   },
   "inputs": {
     "icePressure": 992.6,
@@ -157,11 +160,18 @@
     "hazardQualityScore": 40,
     "hazardQualityLevel": "LOW",
     "hazardQualityColor": "ORG",
-    "dataStatusLabel": "STALE"
+    "dataStatusLabel": "STALE",
+    "dataQuality": "stale",
+    "dataQualityLabel": "STALE",
+    "alertConfidence": "low",
+    "alertConfidenceLabel": "LOW",
+    "lastSuccessfulUpdateAgeHours": 21.17,
+    "usedFallbackNowInstance": null,
+    "nowDataAvailable": false
   },
   "output": {
     "level": "GRN",
     "phase": "STALE (PITERAQ LOW)",
-    "message": "GRN4 LOADLOW PITGRN H24-48T RES10 TRG4 CPL52 GR4.3 LPV-14E LPD0 VG-2 CG2 LQ:L HQ:L D:STALE"
+    "message": "GRN4 LOADLOW PITGRN H24-48T RES10 TRG4 CPL52 GR4.3 LPV-14E LPD0 VG-2 CG2 LQ:L HQ:L DQ:STALE AC:L"
   }
 }
