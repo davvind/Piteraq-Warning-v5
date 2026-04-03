@@ -19,7 +19,7 @@ SUMMARY_FILE = Path("summary.json")
 CONNECT_TIMEOUT = 8
 READ_TIMEOUT = 40
 REQUEST_SLEEP = 0.35
-REQUEST_RETRIES = 3
+REQUEST_RETRIES = 2
 MAX_WORKERS = 1
 
 TIME_TOLERANCE_HOURS = 2.75
@@ -83,14 +83,36 @@ ICE_PARAMS = ICE_PARAMS_CORE
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
 EXTRA_REQUEST_SLEEP = 0.6
-EXTRA_REQUEST_RETRIES = 2
+EXTRA_REQUEST_RETRIES = 1
+
 
 ENABLE_BONUS_FETCH = os.getenv("PITERAQ_ENABLE_BONUS", "1") == "1"
 
+# DMI hygiene controls
+MAX_REQUESTS_PER_RUN = int(os.getenv("PITERAQ_MAX_REQUESTS", "45"))
+MAX_RATE_LIMIT_HITS = int(os.getenv("PITERAQ_MAX_429", "2"))
+BACKFILL_MAX_INSTANCES = 2
+BACKFILL_REQUEST_RETRIES = 1
+
+SEA_POINTS_BACKFILL = [
+    {"name": "W3", "lon": -32.5, "lat": 64.8},
+    {"name": "C2", "lon": -31.1, "lat": 65.4},
+    {"name": "M2", "lon": -31.8, "lat": 64.3},
+]
+
+_global_rate_limit_hits = 0
+_global_request_count = 0
+
+
+def reset_request_counters():
+    global _global_rate_limit_hits, _global_request_count
+    _global_rate_limit_hits = 0
+    _global_request_count = 0
+
 
 TREND_TOLERANCES = {
-    "h6": timedelta(hours=1.5),
-    "h12": timedelta(hours=2.0),
+    "h6": timedelta(hours=2.0),
+    "h12": timedelta(hours=2.5),
     "h24": timedelta(hours=3.0),
     "h72": timedelta(hours=6.0),
 }
@@ -379,8 +401,10 @@ def lp_geometry_score(bearing, lpd_deg, lpv_toward_deg, approach_speed_deg6h=Non
 
 def sanitize_phase_text(phase):
     phase = str(phase or "UNKNOWN").strip()
-    while phase.startswith("STALE (STALE (") and phase.endswith(")"):
+    while phase.startswith("STALE (STALE ("):
         phase = "STALE (" + phase[len("STALE (STALE ("):]
+    while phase.endswith("))"):
+        phase = phase[:-1]
     return phase
 
 
@@ -552,31 +576,51 @@ def write_summary_file(payload):
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
+    global _global_rate_limit_hits, _global_request_count
     last_err = None
 
     for attempt in range(retries):
+        if _global_request_count >= MAX_REQUESTS_PER_RUN:
+            raise RuntimeError(f"DMI request budget exhausted ({MAX_REQUESTS_PER_RUN})")
+        if _global_rate_limit_hits >= MAX_RATE_LIMIT_HITS:
+            raise RuntimeError("DMI circuit breaker: rate limit threshold reached")
+
         try:
             time.sleep(REQUEST_SLEEP)
+            _global_request_count += 1
             r = requests.get(url, params=params, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT))
 
             if r.status_code == 429:
-                wait = 4 + attempt * 6
-                print(f"DMI rate limit (429). Waiting {wait}s...")
+                _global_rate_limit_hits += 1
+                wait = 6 + attempt * 8
+                print(f"DMI rate limit (429) hit #{_global_rate_limit_hits}. Waiting {wait}s...")
+                time.sleep(wait)
+                if _global_rate_limit_hits >= MAX_RATE_LIMIT_HITS:
+                    raise RuntimeError("DMI circuit breaker triggered")
+                continue
+
+            if r.status_code == 502:
+                last_err = requests.exceptions.HTTPError("502 Bad Gateway")
+                wait = 1 + attempt
+                print(f"DMI request failed: HTTPError. Waiting {wait}s...")
                 time.sleep(wait)
                 continue
 
             r.raise_for_status()
             return r.json()
 
+        except RuntimeError:
+            raise
+
         except requests.exceptions.ReadTimeout as e:
             last_err = e
-            wait = 2 + attempt * 3
+            wait = 2 + attempt * 2
             print(f"DMI read timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except requests.exceptions.ConnectTimeout as e:
             last_err = e
-            wait = 2 + attempt * 3
+            wait = 2 + attempt * 2
             print(f"DMI connect timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
@@ -622,7 +666,7 @@ def list_instances():
     return ids
 
 
-def fetch_position(instance_id, lon, lat, parameter_names):
+def fetch_position(instance_id, lon, lat, parameter_names, retries=REQUEST_RETRIES):
     url = f"{BASE}/collections/{COL}/instances/{instance_id}/position"
     params = {
         "coords": f"POINT({lon} {lat})",
@@ -630,7 +674,7 @@ def fetch_position(instance_id, lon, lat, parameter_names):
         "crs": "crs84",
         "f": "CoverageJSON",
     }
-    return get_json(url, params=params)
+    return get_json(url, params=params, retries=retries)
 
 
 def parse_coverage_series(data, parameter_names):
@@ -652,7 +696,7 @@ def build_empty_cache():
             "rows": [],
         }
 
-    for p in SEA_POINTS + COAST_POINTS:
+    for p in sea_points + coast_points:
         merged["sea"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
@@ -662,13 +706,13 @@ def build_empty_cache():
     return merged
 
 
-def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_WORKERS):
+def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_WORKERS, retries=REQUEST_RETRIES):
     results = {}
     errors = {}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(fetch_position, instance_id, p["lon"], p["lat"], parameter_names): p["name"]
+            executor.submit(fetch_position, instance_id, p["lon"], p["lat"], parameter_names, retries): p["name"]
             for p in points
         }
 
@@ -683,14 +727,17 @@ def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_
     return results, errors
 
 
-def append_instance_to_cache(cache, iid):
+def append_instance_to_cache(cache, iid, sea_points=None, coast_points=None, request_retries=REQUEST_RETRIES):
     print(f"Fetching DMI series for instance {iid} with parallel point requests")
 
+    sea_points = sea_points if sea_points is not None else SEA_POINTS
+    coast_points = coast_points if coast_points is not None else COAST_POINTS
+
     ice_results, ice_errors = fetch_points_parallel(
-        iid, ICE_POINTS, ICE_PARAMS, max_workers=min(MAX_WORKERS, len(ICE_POINTS))
+        iid, ICE_POINTS, ICE_PARAMS, max_workers=min(MAX_WORKERS, len(ICE_POINTS)), retries=request_retries
     )
     sea_results, sea_errors = fetch_points_parallel(
-        iid, SEA_POINTS + COAST_POINTS, SEA_PARAMS, max_workers=MAX_WORKERS
+        iid, sea_points + coast_points, SEA_PARAMS, max_workers=MAX_WORKERS, retries=request_retries
     )
 
     all_errors = {}
@@ -717,7 +764,7 @@ def append_instance_to_cache(cache, iid):
                 }
             )
 
-    for p in SEA_POINTS + COAST_POINTS:
+    for p in sea_points + coast_points:
         data = sea_results.get(p["name"])
         if not isinstance(data, dict):
             continue
@@ -746,40 +793,9 @@ def append_instance_to_cache(cache, iid):
 
 
 def get_json_extra(url, params=None, retries=EXTRA_REQUEST_RETRIES):
-    last_err = None
-    for attempt in range(retries):
-        try:
-            time.sleep(EXTRA_REQUEST_SLEEP)
-            r = requests.get(url, params=params, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT))
-
-            if r.status_code == 429:
-                wait = 6 + attempt * 8
-                print(f"DMI extra rate limit (429). Waiting {wait}s...")
-                time.sleep(wait)
-                continue
-
-            r.raise_for_status()
-            return r.json()
-
-        except requests.exceptions.ReadTimeout as e:
-            last_err = e
-            wait = 3 + attempt * 4
-            print(f"DMI extra read timeout. Waiting {wait}s before retry...")
-            time.sleep(wait)
-
-        except requests.exceptions.ConnectTimeout as e:
-            last_err = e
-            wait = 3 + attempt * 4
-            print(f"DMI extra connect timeout. Waiting {wait}s before retry...")
-            time.sleep(wait)
-
-        except Exception as e:
-            last_err = e
-            wait = 2 + attempt * 3
-            print(f"DMI extra request failed: {type(e).__name__}. Waiting {wait}s...")
-            time.sleep(wait)
-
-    raise last_err
+    if _global_rate_limit_hits > 0:
+        raise RuntimeError("Skipping extra fetch after rate limiting in core fetch")
+    return get_json(url, params=params, retries=retries)
 
 
 def fetch_position_extra(instance_id, lon, lat, parameter_names):
@@ -1285,9 +1301,16 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
     cache = build_empty_cache()
     fetch_errors = {}
     remaining = set(missing_labels)
+    older_instance_ids = list(older_instance_ids)[-BACKFILL_MAX_INSTANCES:]
 
     for iid in reversed(older_instance_ids):
-        errs = append_instance_to_cache(cache, iid)
+        errs = append_instance_to_cache(
+            cache,
+            iid,
+            sea_points=SEA_POINTS_BACKFILL,
+            coast_points=[],
+            request_retries=BACKFILL_REQUEST_RETRIES,
+        )
         if errs:
             fetch_errors[iid] = errs
 
@@ -1605,6 +1628,7 @@ def katabatic_loading_metrics(
 
 
 def build_payload(now_dt):
+    reset_request_counters()
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
     history = sort_and_dedup_history(load_json(HISTORY_FILE, []))
 
@@ -1612,7 +1636,7 @@ def build_payload(now_dt):
     latest = instance_ids[-1]
     prev_instance = instance_ids[-2] if len(instance_ids) >= 2 else None
     candidate_instance_ids = [latest] + ([prev_instance] if prev_instance else [])
-    older_instance_ids = [iid for iid in instance_ids[:-1][-5:] if iid not in candidate_instance_ids]
+    older_instance_ids = [iid for iid in instance_ids[:-1][-BACKFILL_MAX_INSTANCES:] if iid not in candidate_instance_ids]
 
     chosen_instance = None
     cache = None
@@ -1659,9 +1683,11 @@ def build_payload(now_dt):
             prev_derived["trendDataStatus"] = "stale: missing_now_fields"
             prev_derived["qualityFlags"] = sorted(set(qf + ["missing_now_fields", "stale_due_to_failed_update"]))
 
-            phase0 = str(prev_output.get("phase", "UNKNOWN"))
+            phase0 = sanitize_phase_text(prev_output.get("phase", "UNKNOWN"))
             if not phase0.startswith("STALE ("):
-                prev_output["phase"] = f"STALE ({phase0})"
+                prev_output["phase"] = sanitize_phase_text(f"STALE ({phase0})")
+            else:
+                prev_output["phase"] = phase0
 
             prev["meta"] = prev_meta
             prev["derived"] = prev_derived
@@ -1673,7 +1699,7 @@ def build_payload(now_dt):
     extra_errors = {}
     cloud_bonus = (
         fetch_cloud_cover_bonus(chosen_instance, valid_now)
-        if ENABLE_BONUS_FETCH and chosen_instance and valid_now
+        if ENABLE_BONUS_FETCH and _global_rate_limit_hits == 0 and chosen_instance and valid_now
         else None
     )
     if isinstance(cloud_bonus, dict):
@@ -2363,9 +2389,11 @@ def write_stale_payload(error):
         existing["derived"] = derived
 
         existing_output = existing.get("output", {})
-        phase0 = str(existing_output.get("phase", "UNKNOWN"))
+        phase0 = sanitize_phase_text(existing_output.get("phase", "UNKNOWN"))
         if not phase0.startswith("STALE ("):
-            existing_output["phase"] = f"STALE ({phase0})"
+            existing_output["phase"] = sanitize_phase_text(f"STALE ({phase0})")
+        else:
+            existing_output["phase"] = phase0
         existing["output"] = existing_output
         annotate_payload_quality(existing)
 
