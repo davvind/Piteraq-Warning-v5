@@ -990,7 +990,7 @@ def instance_has_now_probe(instance_id, target_dt, tolerance_hours=TIME_TOLERANC
 
     probe_specs = [
         ("ice", ICE_POINTS[0], ["pressure-sealevel", "temperature-2m"]),  # minimal probe: wind/direction absence becomes quality flag, not instance rejection
-        ("sea", SEA_POINTS_BACKFILL[1], ["pressure-sealevel", "temperature-2m"]),
+        ("sea", SEA_POINTS_BACKFILL[2], ["pressure-sealevel", "temperature-2m"]),  # M2 (-31.8, 64.3) — more stable than C2 per diagnostics
     ]
 
     successes = 0
