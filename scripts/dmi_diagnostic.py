@@ -113,7 +113,6 @@ def check_collection_parameters():
         fail(f"Klarte ikke hente collection-metadata: {e}")
         return None
 
-    # DMI returnerer parameter-info under ulike nøkler avhengig av versjon
     param_names = set()
     for key in ["parameter_names", "parameters", "parameter-names"]:
         val = data.get(key)
@@ -131,17 +130,35 @@ def check_collection_parameters():
             break
 
     if not param_names:
-        warn("Fant ingen parameterliste i collection-metadata (strukturen kan variere)")
-        warn("Går videre til direkte testing av parametere")
+        warn("Fant ingen parameterliste i collection-metadata")
         return None
 
     print(f"  API rapporterer {len(param_names)} parametere totalt")
     print()
+
+    print("  --- Produksjonsparametere ---")
     for p in sorted(PARAMS_TO_TEST):
         if p in param_names:
             ok(f"{p}  — finnes i collection-metadata")
         else:
             fail(f"{p}  — IKKE funnet i collection-metadata")
+
+    # Dump alle vind/sky-relaterte parametere
+    keywords = ["wind", "cloud", "cover", "dir", "fraction"]
+    relevant = sorted(p for p in param_names if any(k in p.lower() for k in keywords))
+    if relevant:
+        print()
+        print(f"  --- Alle vind/sky-relaterte parametere i harmonie_ig_sf ({len(relevant)} stk) ---")
+        for p in relevant:
+            print(f"       {p}")
+
+    # Dump alle parametere med "100" i navnet
+    at100 = sorted(p for p in param_names if "100" in p)
+    if at100:
+        print()
+        print(f"  --- Alle parametere med 100 i navnet ({len(at100)} stk) ---")
+        for p in at100:
+            print(f"       {p}")
 
     return param_names
 
