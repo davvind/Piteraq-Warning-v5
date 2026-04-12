@@ -1,17 +1,17 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-04-12 19:42 UTC",
+    "updatedAt": "2026-04-12 20:47 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
+    "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
     "instanceId": "2026-04-12T150000Z",
     "lastSuccessfulUpdate": "2026-04-12 19:42 UTC",
-    "lastAttemptFailed": null,
-    "stale": false,
-    "dataQuality": "degraded",
-    "alertConfidence": "medium",
-    "lastSuccessfulUpdateAgeHours": 0.0
+    "lastAttemptFailed": "missing_now_fields",
+    "stale": true,
+    "dataQuality": "stale",
+    "alertConfidence": "low",
+    "lastSuccessfulUpdateAgeHours": 1.08
   },
   "inputs": {
     "icePressure": 1024.2,
@@ -140,7 +140,7 @@
     "lpOffsetHpa": -1.4,
     "lpDistanceKm": 40.0,
     "accUncertain": true,
-    "trendDataStatus": "partial",
+    "trendDataStatus": "stale: missing_now_fields",
     "trendGapHours6": 5.0,
     "trendGapHours12": null,
     "qualityFlags": [
@@ -148,9 +148,11 @@
       "lp_near_favored_sector",
       "missing_coast_gate",
       "missing_gate_east",
+      "missing_now_fields",
       "missing_sea_temperature_partial",
       "partial_point_fetch_errors",
-      "partial_trend_window"
+      "partial_trend_window",
+      "stale_due_to_failed_update"
     ],
     "selectedTimes": {
       "now": {
@@ -169,24 +171,24 @@
     "usedIceCloudPoints": 3,
     "usedSeaPressurePoints": 5,
     "usedSeaTempPoints": 5,
-    "loadQualityScore": 98,
-    "loadQualityLevel": "HIGH",
-    "loadQualityColor": "GRN",
-    "hazardQualityScore": 66,
-    "hazardQualityLevel": "MED",
-    "hazardQualityColor": "YEL",
-    "dataStatusLabel": "DEGRADED",
-    "dataQuality": "degraded",
-    "dataQualityLabel": "DEGRADED",
-    "alertConfidence": "medium",
-    "alertConfidenceLabel": "MEDIUM",
-    "lastSuccessfulUpdateAgeHours": 0.0,
+    "loadQualityScore": 78,
+    "loadQualityLevel": "MED",
+    "loadQualityColor": "YEL",
+    "hazardQualityScore": 42,
+    "hazardQualityLevel": "LOW",
+    "hazardQualityColor": "ORG",
+    "dataStatusLabel": "STALE",
+    "dataQuality": "stale",
+    "dataQualityLabel": "STALE",
+    "alertConfidence": "low",
+    "alertConfidenceLabel": "LOW",
+    "lastSuccessfulUpdateAgeHours": 1.08,
     "usedFallbackNowInstance": null,
-    "nowDataAvailable": true
+    "nowDataAvailable": false
   },
   "output": {
     "level": "GRN",
-    "phase": "PITERAQ LOW",
-    "message": "GRN18 LOADLOW PITGRN H24-48T RES56 TRG8 CPL13 GR15.2 LPV-4W LPD4 VG2 CG? LQ:H HQ:M DQ:DEGRADED AC:M"
+    "phase": "STALE (PITERAQ LOW)",
+    "message": "GRN18 LOADLOW PITGRN H24-48T RES56 TRG8 CPL13 GR15.2 LPV-4W LPD4 VG2 CG? LQ:M HQ:L DQ:STALE AC:L"
   }
 }
