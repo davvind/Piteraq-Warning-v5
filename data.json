@@ -1,7 +1,7 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-05-11 01:25 UTC",
+    "updatedAt": "2026-05-11 05:39 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
@@ -11,7 +11,7 @@
     "stale": true,
     "dataQuality": "stale",
     "alertConfidence": "low",
-    "lastSuccessfulUpdateAgeHours": 28.03
+    "lastSuccessfulUpdateAgeHours": 32.27
   },
   "inputs": {
     "icePressure": 1016.2,
@@ -170,7 +170,7 @@
     "dataQualityLabel": "STALE",
     "alertConfidence": "low",
     "alertConfidenceLabel": "LOW",
-    "lastSuccessfulUpdateAgeHours": 28.03,
+    "lastSuccessfulUpdateAgeHours": 32.27,
     "usedFallbackNowInstance": null,
     "nowDataAvailable": false
   },
