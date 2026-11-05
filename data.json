@@ -1,17 +1,17 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-11-05 07:16 UTC",
+    "updatedAt": "2026-11-05 15:44 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Now-felt manglet i DMI; beholdt siste gyldige datasett",
+    "forecastInfo": "Latest update failed: HTTPError",
     "instanceId": "2026-08-07T180000Z",
     "lastSuccessfulUpdate": "2026-08-08 02:08 UTC",
-    "lastAttemptFailed": "missing_now_fields",
+    "lastAttemptFailed": "HTTPError",
     "stale": true,
     "dataQuality": "stale",
     "alertConfidence": "low",
-    "lastSuccessfulUpdateAgeHours": 2141.13
+    "lastSuccessfulUpdateAgeHours": 2149.6
   },
   "inputs": {
     "icePressure": 1021.5,
@@ -130,7 +130,7 @@
     "lpOffsetHpa": -2.6,
     "lpDistanceKm": 88.5,
     "accUncertain": true,
-    "trendDataStatus": "stale: missing_now_fields",
+    "trendDataStatus": "stale: HTTPError",
     "trendGapHours6": null,
     "trendGapHours12": null,
     "qualityFlags": [
@@ -171,7 +171,7 @@
     "dataQualityLabel": "STALE",
     "alertConfidence": "low",
     "alertConfidenceLabel": "LOW",
-    "lastSuccessfulUpdateAgeHours": 2141.13,
+    "lastSuccessfulUpdateAgeHours": 2149.6,
     "usedFallbackNowInstance": null,
     "nowDataAvailable": false
   },
